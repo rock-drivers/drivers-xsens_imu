@@ -17,8 +17,23 @@ int main(int argc, char* argv[]) {
   
   while(true) {
     ret = driver.getReading();
-    if(ret < 0)
+
+    
+    std::cout << "Got Data From IMU" << std::endl;
+    std::cout << "Acc  " << driver.getCalibratedAccData() << std::endl;
+    
+    std::cout << "Gyro " << driver.getCalibratedGyroData() << std::endl;
+    std::cout << "Magnetometer " << driver.getCalibratedMagData() << std::endl;
+    
+    std::cout << "Orientation " << driver.getOrientation().x() << " " << driver.getOrientation().y() << " " << driver.getOrientation().z() << " " << driver.getOrientation().w() << std::endl;
+  
+    std::cout << "Packet counter " << driver.getPacketCounter() << std::endl;
+
+    if(ret < -1)
       exit(1);
+
+    if(ret < 0)
+      std::cout << "Timout" << std::endl;
   }
   
 }

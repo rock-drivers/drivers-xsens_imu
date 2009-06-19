@@ -1,5 +1,5 @@
 
-PROJECT(xsense)
+PROJECT(xsens)
 
 cmake_minimum_required(VERSION 2.6)
 
@@ -10,16 +10,19 @@ ADD_DEFINITIONS(-Wall)
 #ADD_EXECUTABLE(driver main.cpp interface.cpp)
 find_package(PkgConfig)
 
-pkg_check_modules(DFKI_TYPES REQUIRED "dfki-types")
-INCLUDE_DIRECTORIES(${DFKI_TYPES_INCLUDE_DIRS})
-LINK_DIRECTORIES(${DFKI_TYPES_LIBRARY_DIRS})
+#pkg_check_modules(DFKI_TYPES REQUIRED "dfki-types")
+#INCLUDE_DIRECTORIES(${DFKI_TYPES_INCLUDE_DIRS})
+#LINK_DIRECTORIES(${DFKI_TYPES_LIBRARY_DIRS})
+
+INCLUDE_DIRECTORIES(/usr/include/eigen2)
 
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/xsensVendorLib)
 add_subdirectory(xsensVendorLib)
 
 ADD_LIBRARY(xsens SHARED XsensDriver.cpp)
-TARGET_LINK_LIBRARIES(xsens ${DFKI_TYPES_LIBS})
+TARGET_LINK_LIBRARIES(xsens) 
+#${DFKI_TYPES_LIBS})
 
 #need to link to some other libraries ? just add them here
 #TARGET_LINK_LIBRARIES(driver png jpeg)
