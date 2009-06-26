@@ -21,7 +21,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/xsensVendorLib)
 add_subdirectory(xsensVendorLib)
 
 ADD_LIBRARY(xsens SHARED XsensDriver.cpp)
-TARGET_LINK_LIBRARIES(xsens) 
+TARGET_LINK_LIBRARIES(xsens xsensVendorLib) 
 #${DFKI_TYPES_LIBS})
 
 #need to link to some other libraries ? just add them here
