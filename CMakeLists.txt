@@ -36,7 +36,7 @@ ADD_CUSTOM_TARGET(doc doxygen Doxyfile)
 INSTALL(TARGETS xsens
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib)
-INSTALL(FILES XsensDriver.hpp DESTINATION include)
+INSTALL(FILES XsensDriver.hpp XsensTypes.hpp DESTINATION include)
 
 CONFIGURE_FILE(xsens.pc.in xsens.pc @ONLY)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/xsens.pc DESTINATION lib/pkgconfig)
