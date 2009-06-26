@@ -2,13 +2,14 @@
 #include<iostream>
 #include"XsensDriver.hpp"
 
+namespace xsens_imu {
 
 XsensDriver::XsensDriver() {
   packet = 0;
 }
 
 
-int XsensDriver::connectDevice(std::string dev, enum XsensDriver::imuMode imuMode) {
+int XsensDriver::connectDevice(std::string dev, enum xsens_imu::imuMode imuMode) {
   CmtDeviceId deviceIds[256];
 
   //hardcoded Baudrate for now
@@ -107,7 +108,7 @@ bool XsensDriver::setTimeout(const uint32_t timeout) {
 
 
 
-enum XsensDriver::errorCodes XsensDriver::getReading() {
+enum xsens_imu::errorCodes XsensDriver::getReading() {
 
   XsensResultValue ret = cmt3.waitForDataMessage(packet);
   
@@ -154,5 +155,5 @@ Eigen::Vector3d XsensDriver::getCalibratedMagData() const {
   return Eigen::Vector3d(caldata.m_mag.m_data[0], caldata.m_mag.m_data[1], caldata.m_mag.m_data[2]);
 }
 
-
+}
 

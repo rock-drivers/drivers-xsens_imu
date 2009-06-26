@@ -9,7 +9,7 @@ int main(int argc, char* argv[]) {
   
   std::string dev(argv[1]);
   
-  XsensDriver driver;
+  xsens_imu::XsensDriver driver;
   
   int ret = driver.connectDevice(dev);
   if(ret < 0)
