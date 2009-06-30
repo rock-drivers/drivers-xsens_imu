@@ -29,6 +29,8 @@ TARGET_LINK_LIBRARIES(xsens xsensVendorLib)
 
 ADD_EXECUTABLE(xsensTest XsensTest.cpp)
 TARGET_LINK_LIBRARIES(xsensTest xsens xsensVendorLib)
+ADD_EXECUTABLE(xsensCalibration XsensCalibration.cpp)
+TARGET_LINK_LIBRARIES(xsensCalibration xsens xsensVendorLib)
 
  
 CONFIGURE_FILE(Doxyfile.in Doxyfile @ONLY)

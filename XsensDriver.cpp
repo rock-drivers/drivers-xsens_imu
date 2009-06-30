@@ -1,6 +1,7 @@
 #include<stdlib.h>
 #include<iostream>
 #include"XsensDriver.hpp"
+#include <limits.h>
 
 namespace xsens_imu {
 
@@ -9,97 +10,120 @@ XsensDriver::XsensDriver() {
 }
 
 
-int XsensDriver::connectDevice(std::string dev, enum xsens_imu::imuMode imuMode) {
+bool XsensDriver::open(std::string const& dev) {
   CmtDeviceId deviceIds[256];
 
   //hardcoded Baudrate for now
   int baudrate = B115200;
   
   XsensResultValue ret = cmt3.openPort(dev.c_str(), baudrate);
-  if(ret != XRV_OK) {
-    perror("Failed to open Xsens MTi");
-    return -1;
-  }
-  
-  CmtOutputMode mode = 0;
-  CmtOutputSettings settings = 0;
+  if(ret != XRV_OK)
+      return false;
+  return true;
+}
 
+bool XsensDriver::setCalibrationMode()
+{
+    int cmt_output  = CMT_OUTPUTMODE_RAW;
+    int cmt_options = CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT;
+    int sample_freq = CMT_DEFAULT_SAMPLE_FREQUENCY;
 
-  switch (imuMode) {
-  case ONLY_CAL_DATA:
-    //configure IMU in calibrated data mode
-    mode = CMT_OUTPUTMODE_CALIB;
-    break;
-  case ONLY_ORI_DATA:
-    //configure IMU in orientation mode
-    mode = CMT_OUTPUTMODE_ORIENT;
-    
-    //tell IMU to give us orientation as quaternion
-    settings = CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION;
-    break;
-  case CAL_AND_ORI_DATA:
-    //configure IMU in calibrated data and orientation mode
-    mode = CMT_OUTPUTMODE_CALIB | CMT_OUTPUTMODE_ORIENT;
-    
-    //tell IMU to give us orientation as quaternion
-    settings = CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION;
-    break;
-  }
-
-  //add timestamps to data
-  settings |= CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT;
-  
-  unsigned int mtCount = cmt3.getMtCount();
-	
-  // set sensor to config sate
-  ret = cmt3.gotoConfig();
-  if(ret != XRV_OK) {
-    perror("Failed to set Xsens MTi into Config mode");
-    return -2;
-  }
-
-  //get device ids
-  for(unsigned int j = 0; j < mtCount; j++){
-    ret = cmt3.getDeviceId((unsigned char)(j+1), deviceIds[j]);
-    if(ret != XRV_OK) {
-      perror("Failed to get Xsens MTi device ID");
-      return -3;
+    // Set sensor to config state
+    int ret = cmt3.gotoConfig();
+    if(ret != XRV_OK)
+    {
+        std::cerr << "failed to go into config mode" << std::endl;
+        return false;
     }
-    
-    printf("Device ID at busId %i: %08lx\n\n",j+1,(long) deviceIds[j]);
-  }
 
-  unsigned short sampleFreq;
-  sampleFreq = cmt3.getSampleFrequency();
-
-  for (unsigned int i = 0; i < mtCount; i++) {
-    CmtDeviceMode deviceMode(mode, settings, sampleFreq);
-    if ((deviceIds[i] & 0xFFF00000) != 0x00500000) {
-      // not an MTi-G, remove all GPS related stuff
-      deviceMode.m_outputMode &= 0xFF0F;
+    CmtDeviceMode deviceMode(cmt_output, cmt_options, sample_freq);
+    deviceMode.m_outputMode &= 0xFF0F;
+    ret = cmt3.setDeviceMode(deviceMode, true);
+    if(ret != XRV_OK)
+    {
+        std::cerr << "failed to set device mode" << std::endl;
+        return false;
     }
-    ret = cmt3.setDeviceMode(deviceMode, true, deviceIds[i]);
-    if(ret != XRV_OK) {
-      perror("Failed to set Xsens MTi into devicemode");
-      return -4;
+
+    // Set logging
+    ret = cmt3.createLogFile("xsens-imu-calib.bin", true);
+    if (ret != XRV_OK)
+    {
+        std::cerr << "failed to enable logging" << std::endl;
+        return false;
     }
-  }
 
-  // tell IMU to send us data
-  ret = cmt3.gotoMeasurement();
-  if(ret != XRV_OK) {
-      perror("Failed to get Xsens MTi Measurements");
-      return -5;
-  }
+    char logfile_name[PATH_MAX];
+    cmt3.getLogFileName(logfile_name);
+    std::cout << "Xsens driver is now in calibration mode\n";
+    std::cout << "  output file: " << logfile_name << std::endl;
 
-  if(packet) {
+    // Go into measurement mode
+    ret = cmt3.gotoMeasurement();
+    if (ret != XRV_OK)
+    {
+        std::cerr << "failed to go into measurement mode" << std::endl;
+        return false;
+    }
+
+    unsigned int mtCount = cmt3.getMtCount();
     delete packet;
-    packet = 0;
-  }
-  
-  packet = new xsens::Packet((unsigned short) mtCount, cmt3.isXm());
+    packet = new xsens::Packet(mtCount, cmt3.isXm());
+    return true;
+}
 
-  return 0;
+bool XsensDriver::setReadingMode(imuMode output_mode)
+{
+    CmtOutputMode     mode = 0;
+    CmtOutputSettings settings = 0;
+
+    switch (output_mode) {
+        case ONLY_CAL_DATA:
+            //configure IMU in calibrated data mode
+            mode = CMT_OUTPUTMODE_CALIB;
+            break;
+        case ONLY_ORI_DATA:
+            //configure IMU in orientation mode
+            mode = CMT_OUTPUTMODE_ORIENT;
+
+            //tell IMU to give us orientation as quaternion
+            settings = CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION;
+            break;
+        case CAL_AND_ORI_DATA:
+            //configure IMU in calibrated data and orientation mode
+            mode = CMT_OUTPUTMODE_CALIB | CMT_OUTPUTMODE_ORIENT;
+
+            //tell IMU to give us orientation as quaternion
+            settings = CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION;
+            break;
+    }
+
+    //add timestamps to data
+    settings |= CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT;
+
+    unsigned int mtCount = cmt3.getMtCount();
+
+    // set sensor to config sate
+    int ret = cmt3.gotoConfig();
+    if(ret != XRV_OK) {
+        std::cerr << "Failed to set Xsens MTi into Config mode" << std::endl;
+        return false;
+    }
+
+    unsigned short sampleFreq = cmt3.getSampleFrequency();
+
+    CmtDeviceMode deviceMode(mode, settings, sampleFreq);
+    deviceMode.m_outputMode &= 0xFF0F;
+    ret = cmt3.setDeviceMode(deviceMode, true);
+    if(ret != XRV_OK) {
+        std::cerr << "Failed to set Xsens MTi into devicemode" << std::endl;
+        return false;
+    }
+
+    delete packet;
+    packet = new xsens::Packet((unsigned short) mtCount, cmt3.isXm());
+
+    return true;
 }
 
 bool XsensDriver::setTimeout(const uint32_t timeout) {
@@ -125,7 +149,7 @@ enum xsens_imu::errorCodes XsensDriver::getReading() {
       break;
       
     case XRV_OK:
-      caldata = packet->getCalData(0);
+      caldata  = packet->getCalData(0);
       qat_data = packet->getOriQuat(0);
 
       return NO_ERROR;

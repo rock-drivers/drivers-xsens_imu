@@ -15,7 +15,10 @@ namespace xsens_imu {
 
             XsensDriver();
 
-            int connectDevice(std::string dev, enum xsens_imu::imuMode = ONLY_ORI_DATA);
+            bool open(std::string const& dev);
+
+            bool setReadingMode(enum xsens_imu::imuMode = ONLY_ORI_DATA);
+            bool setCalibrationMode();
 
             /**
              * This function acquires a new sensor reading 
