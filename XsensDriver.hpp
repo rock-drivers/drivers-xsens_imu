@@ -1,19 +1,20 @@
-#include "cmtdef.h"
-#include "xsens_time.h"
-#include "xsens_list.h"
-#include "cmtscan.h"
-#include "cmt3.h"
-#include<string>
+#ifndef __XSENSDRIVER_H__
+#define __XSENSDRIVER_H__
+
+#include <string>
 #include <Eigen/Geometry> 
 
 #include "XsensTypes.hpp"
 
 namespace xsens_imu {
 
+    class XsensData;
+
     class XsensDriver {
         public:
 
             XsensDriver();
+            ~XsensDriver();
 
             bool open(std::string const& dev);
 
@@ -72,11 +73,9 @@ namespace xsens_imu {
              **/
             Eigen::Vector3d getCalibratedMagData() const;
 
-
         private:
-            xsens::Cmt3 cmt3;
-            xsens::Packet* packet;
-            CmtCalData caldata;
-            CmtQuat qat_data;
-    };
+            XsensData* _data;
+   };
 }
+
+#endif

@@ -1,14 +1,19 @@
 #include<stdlib.h>
 #include<iostream>
+#include"XsensData.hpp"
 #include"XsensDriver.hpp"
 #include <limits.h>
 
 namespace xsens_imu {
 
 XsensDriver::XsensDriver() {
-  packet = 0;
+    _data = new XsensData();
+    _data->packet = NULL;
 }
 
+XsensDriver::~XsensDriver() {
+    delete _data;
+}
 
 bool XsensDriver::open(std::string const& dev) {
   CmtDeviceId deviceIds[256];
@@ -16,7 +21,7 @@ bool XsensDriver::open(std::string const& dev) {
   //hardcoded Baudrate for now
   int baudrate = B115200;
   
-  XsensResultValue ret = cmt3.openPort(dev.c_str(), baudrate);
+  XsensResultValue ret = _data->cmt3.openPort(dev.c_str(), baudrate);
   if(ret != XRV_OK)
       return false;
   return true;
@@ -29,7 +34,7 @@ bool XsensDriver::setCalibrationMode()
     int sample_freq = CMT_DEFAULT_SAMPLE_FREQUENCY;
 
     // Set sensor to config state
-    int ret = cmt3.gotoConfig();
+    int ret = _data->cmt3.gotoConfig();
     if(ret != XRV_OK)
     {
         std::cerr << "failed to go into config mode" << std::endl;
@@ -38,7 +43,7 @@ bool XsensDriver::setCalibrationMode()
 
     CmtDeviceMode deviceMode(cmt_output, cmt_options, sample_freq);
     deviceMode.m_outputMode &= 0xFF0F;
-    ret = cmt3.setDeviceMode(deviceMode, true);
+    ret = _data->cmt3.setDeviceMode(deviceMode, true);
     if(ret != XRV_OK)
     {
         std::cerr << "failed to set device mode" << std::endl;
@@ -46,7 +51,7 @@ bool XsensDriver::setCalibrationMode()
     }
 
     // Set logging
-    ret = cmt3.createLogFile("xsens-imu-calib.bin", true);
+    ret = _data->cmt3.createLogFile("xsens-imu-calib.bin", true);
     if (ret != XRV_OK)
     {
         std::cerr << "failed to enable logging" << std::endl;
@@ -54,21 +59,21 @@ bool XsensDriver::setCalibrationMode()
     }
 
     char logfile_name[PATH_MAX];
-    cmt3.getLogFileName(logfile_name);
+    _data->cmt3.getLogFileName(logfile_name);
     std::cout << "Xsens driver is now in calibration mode\n";
     std::cout << "  output file: " << logfile_name << std::endl;
 
     // Go into measurement mode
-    ret = cmt3.gotoMeasurement();
+    ret = _data->cmt3.gotoMeasurement();
     if (ret != XRV_OK)
     {
         std::cerr << "failed to go into measurement mode" << std::endl;
         return false;
     }
 
-    unsigned int mtCount = cmt3.getMtCount();
-    delete packet;
-    packet = new xsens::Packet(mtCount, cmt3.isXm());
+    unsigned int mtCount = _data->cmt3.getMtCount();
+    delete _data->packet;
+    _data->packet = new xsens::Packet(mtCount, _data->cmt3.isXm());
     return true;
 }
 
@@ -101,40 +106,40 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
     //add timestamps to data
     settings |= CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT;
 
-    unsigned int mtCount = cmt3.getMtCount();
+    unsigned int mtCount = _data->cmt3.getMtCount();
 
     // set sensor to config sate
-    int ret = cmt3.gotoConfig();
+    int ret = _data->cmt3.gotoConfig();
     if(ret != XRV_OK) {
         std::cerr << "Failed to set Xsens MTi into Config mode" << std::endl;
         return false;
     }
 
-    unsigned short sampleFreq = cmt3.getSampleFrequency();
+    unsigned short sampleFreq = _data->cmt3.getSampleFrequency();
 
     CmtDeviceMode deviceMode(mode, settings, sampleFreq);
     deviceMode.m_outputMode &= 0xFF0F;
-    ret = cmt3.setDeviceMode(deviceMode, true);
+    ret = _data->cmt3.setDeviceMode(deviceMode, true);
     if(ret != XRV_OK) {
         std::cerr << "Failed to set Xsens MTi into devicemode" << std::endl;
         return false;
     }
 
-    delete packet;
-    packet = new xsens::Packet((unsigned short) mtCount, cmt3.isXm());
+    delete _data->packet;
+    _data->packet = new xsens::Packet((unsigned short) mtCount, _data->cmt3.isXm());
 
     return true;
 }
 
 bool XsensDriver::setTimeout(const uint32_t timeout) {
-  return !cmt3.setTimeoutMeasurement(timeout);
+  return !_data->cmt3.setTimeoutMeasurement(timeout);
 }
 
 
 
 enum xsens_imu::errorCodes XsensDriver::getReading() {
 
-  XsensResultValue ret = cmt3.waitForDataMessage(packet);
+  XsensResultValue ret = _data->cmt3.waitForDataMessage(_data->packet);
   
   switch(ret) {
     case XRV_TIMEOUT:
@@ -149,8 +154,8 @@ enum xsens_imu::errorCodes XsensDriver::getReading() {
       break;
       
     case XRV_OK:
-      caldata  = packet->getCalData(0);
-      qat_data = packet->getOriQuat(0);
+      _data->caldata  = _data->packet->getCalData(0);
+      _data->qat_data = _data->packet->getOriQuat(0);
 
       return NO_ERROR;
       break;
@@ -160,23 +165,23 @@ enum xsens_imu::errorCodes XsensDriver::getReading() {
 }
 
 int XsensDriver::getPacketCounter() {
-  return packet->getSampleCounter();
+  return _data->packet->getSampleCounter();
 }
 
 Eigen::Quaternion<double> XsensDriver::getOrientation() const {
-  return Eigen::Quaternion<double>(qat_data.m_data[0], qat_data.m_data[1], qat_data.m_data[2], qat_data.m_data[3]);
+  return Eigen::Quaternion<double>(_data->qat_data.m_data[0], _data->qat_data.m_data[1], _data->qat_data.m_data[2], _data->qat_data.m_data[3]);
 }
 
 Eigen::Vector3d XsensDriver::getCalibratedAccData() const {
-  return Eigen::Vector3d(caldata.m_acc.m_data[0], caldata.m_acc.m_data[1], caldata.m_acc.m_data[2]);
+  return Eigen::Vector3d(_data->caldata.m_acc.m_data[0], _data->caldata.m_acc.m_data[1], _data->caldata.m_acc.m_data[2]);
 }
 
 Eigen::Vector3d XsensDriver::getCalibratedGyroData() const {
-  return Eigen::Vector3d(caldata.m_gyr.m_data[0], caldata.m_gyr.m_data[1], caldata.m_gyr.m_data[2]);
+  return Eigen::Vector3d(_data->caldata.m_gyr.m_data[0], _data->caldata.m_gyr.m_data[1], _data->caldata.m_gyr.m_data[2]);
 }
 
 Eigen::Vector3d XsensDriver::getCalibratedMagData() const {
-  return Eigen::Vector3d(caldata.m_mag.m_data[0], caldata.m_mag.m_data[1], caldata.m_mag.m_data[2]);
+  return Eigen::Vector3d(_data->caldata.m_mag.m_data[0], _data->caldata.m_mag.m_data[1], _data->caldata.m_mag.m_data[2]);
 }
 
 }
