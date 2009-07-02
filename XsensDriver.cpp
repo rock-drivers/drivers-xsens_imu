@@ -126,7 +126,7 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
     }
 
    // Go into measurement mode
-    ret = cmt3.gotoMeasurement();
+    ret = _data->cmt3.gotoMeasurement();
     if (ret != XRV_OK)
     {
         std::cerr << "failed to go into measurement mode" << std::endl;
