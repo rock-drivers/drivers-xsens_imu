@@ -125,6 +125,14 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
         return false;
     }
 
+   // Go into measurement mode
+    ret = cmt3.gotoMeasurement();
+    if (ret != XRV_OK)
+    {
+        std::cerr << "failed to go into measurement mode" << std::endl;
+        return false;
+    }
+
     delete _data->packet;
     _data->packet = new xsens::Packet((unsigned short) mtCount, _data->cmt3.isXm());
 
