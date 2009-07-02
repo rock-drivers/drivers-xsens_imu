@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
 
     while(true) {
         int ret = driver.getReading();
-
+        if( ret == xsens_imu::NO_ERROR ) {
 
         std::cout << "Got Data From IMU" << std::endl;
         std::cout << "Acc  " << driver.getCalibratedAccData() << std::endl;
@@ -35,12 +35,15 @@ int main(int argc, char* argv[]) {
         std::cout << "Orientation " << driver.getOrientation().x() << " " << driver.getOrientation().y() << " " << driver.getOrientation().z() << " " << driver.getOrientation().w() << std::endl;
 
         std::cout << "Packet counter " << driver.getPacketCounter() << std::endl;
+        }
 
-        if(ret < -1)
-            exit(1);
-
-        if(ret < 0)
+        if( ret == xsens_imu::ERROR_TIMEOUT ) {
             std::cout << "Timout" << std::endl;
-    }
-  
+        }
+
+        if( ret == xsens_imu::ERROR_OTHER ) {
+            std::cout << "No idea what, but an error occured." << std::endl;
+            exit(1);
+        }
+   }
 }
