@@ -1,6 +1,8 @@
-#include"XsensDriver.hpp"
-#include<iostream>
+#include "XsensDriver.hpp"
+#include <iostream>
+#include <iomanip>
 
+using namespace std;
 int main(int argc, char* argv[]) {
     if(argc < 2) {  
         std::cout << "usage xsensTest <device>" << std::endl;
@@ -12,33 +14,46 @@ int main(int argc, char* argv[]) {
     xsens_imu::XsensDriver driver;
 
     if (! driver.open(dev))
-    {
-        std::cerr << "failed to open IMU" << std::endl;
         return 1;
-    }
     if (! driver.setReadingMode(xsens_imu::CAL_AND_ORI_DATA))
-    {
-        std::cerr << "failed to go into sample reading mode" << std::endl;
         return 1;
-    }
+
+    std::cout << setw(10) << "packet_id"
+        << " " << setw(10) << "acc.x"
+        << " " << setw(10) << "acc.y"
+        << " " << setw(10) << "acc.z"
+        << " " << setw(10) << "gyro.x"
+        << " " << setw(10) << "gyro.y"
+        << " " << setw(10) << "gyro.z"
+        << " " << setw(10) << "mag.x"
+        << " " << setw(10) << "mag.y"
+        << " " << setw(10) << "mag.z"
+        << " " << setw(10) << "q.x"
+        << " " << setw(10) << "q.y"
+        << " " << setw(10) << "q.z"
+        << " " << setw(10) << "q.w" << std::endl;
 
     while(true) {
         int ret = driver.getReading();
         if( ret == xsens_imu::NO_ERROR ) {
-
-        std::cout << "Got Data From IMU" << std::endl;
-        std::cout << "Acc  " << driver.getCalibratedAccData() << std::endl;
-
-        std::cout << "Gyro " << driver.getCalibratedGyroData() << std::endl;
-        std::cout << "Magnetometer " << driver.getCalibratedMagData() << std::endl;
-
-        std::cout << "Orientation " << driver.getOrientation().x() << " " << driver.getOrientation().y() << " " << driver.getOrientation().z() << " " << driver.getOrientation().w() << std::endl;
-
-        std::cout << "Packet counter " << driver.getPacketCounter() << std::endl;
+            std::cout << setw(10) << driver.getPacketCounter()
+                << " " << setw(10) << driver.getCalibratedAccData().x()
+                << " " << setw(10) << driver.getCalibratedAccData().y()
+                << " " << setw(10) << driver.getCalibratedAccData().z()
+                << " " << setw(10) << driver.getCalibratedGyroData().x()
+                << " " << setw(10) << driver.getCalibratedGyroData().y()
+                << " " << setw(10) << driver.getCalibratedGyroData().z()
+                << " " << setw(10) << driver.getCalibratedMagData().x()
+                << " " << setw(10) << driver.getCalibratedMagData().y()
+                << " " << setw(10) << driver.getCalibratedMagData().z()
+                << " " << setw(10) << driver.getOrientation().x()
+                << " " << setw(10) << driver.getOrientation().y()
+                << " " << setw(10) << driver.getOrientation().z()
+                << " " << setw(10) << driver.getOrientation().w() << std::endl;
         }
 
         if( ret == xsens_imu::ERROR_TIMEOUT ) {
-            std::cout << "Timout" << std::endl;
+            std::cout << "timeout" << std::endl;
         }
 
         if( ret == xsens_imu::ERROR_OTHER ) {
