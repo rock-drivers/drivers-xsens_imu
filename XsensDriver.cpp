@@ -1,10 +1,11 @@
-#include<stdlib.h>
-#include<iostream>
-#include"XsensData.hpp"
-#include"XsensDriver.hpp"
-#include <limits.h>
+#include <stdlib.h>
+#include <iostream>
+#include "XsensData.hpp"
+#include "XsensDriver.hpp"
+#include <iostream>
 
-namespace xsens_imu {
+using namespace std;
+using namespace xsens_imu;
 
 XsensDriver::XsensDriver() {
     _data = new XsensData();
@@ -16,28 +17,49 @@ XsensDriver::~XsensDriver() {
 }
 
 bool XsensDriver::open(std::string const& dev) {
-  CmtDeviceId deviceIds[256];
+    // Hardcoded Baudrate for now
+    int baudrate = CMT_BAUD_RATE_115K2;
+    XsensResultValue ret = _data->cmt3.openPort(dev.c_str(), baudrate);
+    if(ret != XRV_OK)
+    {
+        cerr << "xsens: failed to find an MTi on port " << dev << " (" << xsensResultText(ret) << ")" << endl;
+        return false;
+    }
 
-  //hardcoded Baudrate for now
-  int baudrate = B115200;
-  
-  XsensResultValue ret = _data->cmt3.openPort(dev.c_str(), baudrate);
-  if(ret != XRV_OK)
-      return false;
-  return true;
+    // Reset alignment matrix, "just in case"
+    CmtMatrix mat;
+    mat.m_data[0][0] = 1.0;
+    mat.m_data[0][1] = 0.0;
+    mat.m_data[0][2] = 0.0;
+
+    mat.m_data[1][0] = 0.0;
+    mat.m_data[1][1] = 1.0;
+    mat.m_data[1][2] = 0.0;
+
+    mat.m_data[2][0] = 0.0;
+    mat.m_data[2][1] = 0.0;
+    mat.m_data[2][2] = 1.0;
+    ret = _data->cmt3.setObjectAlignmentMatrix(mat);
+    if (ret != XRV_OK)
+    {
+        cerr << "xsens: failed to set object alignment " << xsensResultText(ret) << endl;
+        return false;
+    }
+
+    return true;
 }
 
 bool XsensDriver::setCalibrationMode()
 {
     int cmt_output  = CMT_OUTPUTMODE_RAW;
     int cmt_options = CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT;
-    int sample_freq = CMT_DEFAULT_SAMPLE_FREQUENCY;
+    int sample_freq = 100;
 
     // Set sensor to config state
-    int ret = _data->cmt3.gotoConfig();
+    XsensResultValue ret = _data->cmt3.gotoConfig();
     if(ret != XRV_OK)
     {
-        std::cerr << "failed to go into config mode" << std::endl;
+        std::cerr << "xsens: failed to go into config mode " << xsensResultText(ret) << std::endl;
         return false;
     }
 
@@ -46,7 +68,7 @@ bool XsensDriver::setCalibrationMode()
     ret = _data->cmt3.setDeviceMode(deviceMode, true);
     if(ret != XRV_OK)
     {
-        std::cerr << "failed to set device mode" << std::endl;
+        std::cerr << "xsens: failed to set device mode " << xsensResultText(ret) << std::endl;
         return false;
     }
 
@@ -54,20 +76,20 @@ bool XsensDriver::setCalibrationMode()
     ret = _data->cmt3.createLogFile("xsens-imu-calib.bin", true);
     if (ret != XRV_OK)
     {
-        std::cerr << "failed to enable logging" << std::endl;
+        std::cerr << "xsens: failed to enable logging " << xsensResultText(ret) << std::endl;
         return false;
     }
 
     char logfile_name[PATH_MAX];
     _data->cmt3.getLogFileName(logfile_name);
-    std::cout << "Xsens driver is now in calibration mode\n";
+    std::cout << "xsens: driver is now in calibration mode\n";
     std::cout << "  output file: " << logfile_name << std::endl;
 
     // Go into measurement mode
     ret = _data->cmt3.gotoMeasurement();
     if (ret != XRV_OK)
     {
-        std::cerr << "failed to go into measurement mode" << std::endl;
+        std::cerr << "xsens: failed to go into measurement mode" << xsensResultText(ret) << std::endl;
         return false;
     }
 
@@ -109,9 +131,9 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
     unsigned int mtCount = _data->cmt3.getMtCount();
 
     // set sensor to config sate
-    int ret = _data->cmt3.gotoConfig();
+    XsensResultValue ret = _data->cmt3.gotoConfig();
     if(ret != XRV_OK) {
-        std::cerr << "Failed to set Xsens MTi into Config mode" << std::endl;
+        std::cerr << "xsens: failed to go into config mode " << xsensResultText(ret) << std::endl;
         return false;
     }
 
@@ -121,7 +143,7 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
     deviceMode.m_outputMode &= 0xFF0F;
     ret = _data->cmt3.setDeviceMode(deviceMode, true);
     if(ret != XRV_OK) {
-        std::cerr << "Failed to set Xsens MTi into devicemode" << std::endl;
+        std::cerr << "xsens: failed to set device mode " << xsensResultText(ret) << std::endl;
         return false;
     }
 
@@ -129,7 +151,7 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
     ret = _data->cmt3.gotoMeasurement();
     if (ret != XRV_OK)
     {
-        std::cerr << "failed to go into measurement mode" << std::endl;
+        std::cerr << "xsens: failed to go into measurement mode " << xsensResultText(ret) << std::endl;
         return false;
     }
 
@@ -190,7 +212,5 @@ Eigen::Vector3d XsensDriver::getCalibratedGyroData() const {
 
 Eigen::Vector3d XsensDriver::getCalibratedMagData() const {
   return Eigen::Vector3d(_data->caldata.m_mag.m_data[0], _data->caldata.m_mag.m_data[1], _data->caldata.m_mag.m_data[2]);
-}
-
 }
 
