@@ -408,18 +408,19 @@ XsensResultValue Cmt1s::open(  const char *portName,
 	tcflush(m_handle, TCIOFLUSH);
 
 	// setting RTS and DTR; RTS for Xbus Master, DTR for calibration sensors
-	int cmbits;
-	if (ioctl(m_handle, TIOCMGET, &cmbits) < 0)
-	{
-		return (m_lastResult = XRV_ERROR);
-	}
-	
-	cmbits |= TIOCM_RTS|TIOCM_DTR;
-	
-	if (ioctl(m_handle, TIOCMSET, &cmbits) < 0)
-	{
-		return (m_lastResult = XRV_ERROR);
-	}
+	// int cmbits;
+	// if (ioctl(m_handle, TIOCMGET, &cmbits) < 0)
+	// {
+        //     perror("");
+	// 	return (m_lastResult = XRV_ERROR);
+	// }
+	// 
+	// cmbits |= TIOCM_RTS|TIOCM_DTR;
+	// 
+	// if (ioctl(m_handle, TIOCMSET, &cmbits) < 0)
+	// {
+	// 	return (m_lastResult = XRV_ERROR);
+	// }
 #endif // !_WIN32
 
 	CMT1LOG("L1: Port opened\n");
