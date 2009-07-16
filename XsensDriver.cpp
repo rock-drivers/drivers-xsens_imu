@@ -16,6 +16,11 @@ XsensDriver::~XsensDriver() {
     delete _data;
 }
 
+bool XsensDriver::close() {
+    XsensResultValue ret = _data->cmt3.closePort(true);
+    return ret == XRV_OK;
+}
+
 bool XsensDriver::open(std::string const& dev) {
     // Hardcoded Baudrate for now
     int baudrate = CMT_BAUD_RATE_115K2;
@@ -47,6 +52,14 @@ bool XsensDriver::open(std::string const& dev) {
     }
 
     return true;
+}
+
+uint32_t XsensDriver::getFileHandle()
+{
+    uint32_t fd = -1;
+    if( _data->cmt3.getCmt2s() && _data->cmt3.getCmt2s()->getCmt1s() )
+        fd = _data->cmt3.getCmt2s()->getCmt1s()->getHandle();
+    return fd;
 }
 
 bool XsensDriver::setCalibrationMode()

@@ -18,6 +18,8 @@ int main(int argc, char* argv[]) {
     if (! driver.setReadingMode(xsens_imu::CAL_AND_ORI_DATA))
         return 1;
 
+    std::cout << "file handle: " << driver.getFileHandle() << std::endl << std::endl;
+
     std::cout << setw(10) << "packet_id"
         << " " << setw(10) << "acc.x"
         << " " << setw(10) << "acc.y"
@@ -33,7 +35,8 @@ int main(int argc, char* argv[]) {
         << " " << setw(10) << "q.z"
         << " " << setw(10) << "q.w" << std::endl;
 
-    while(true) {
+    int i=100;
+    while(i--) {
         int ret = driver.getReading();
         if( ret == xsens_imu::NO_ERROR ) {
             std::cout << setw(10) << driver.getPacketCounter()
@@ -61,4 +64,6 @@ int main(int argc, char* argv[]) {
             exit(1);
         }
    }
+
+    std::cout << "closing driver: " << driver.close() << std::endl;
 }
