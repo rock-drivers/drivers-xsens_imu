@@ -54,10 +54,10 @@ bool XsensDriver::open(std::string const& dev) {
     return true;
 }
 
-uint32_t XsensDriver::getFileHandle()
+int XsensDriver::getFileHandle()
 {
-    uint32_t fd = -1;
-    if( _data->cmt3.getCmt2s() && _data->cmt3.getCmt2s()->getCmt1s() )
+    int fd = -1;
+    if( _data && _data->cmt3.getCmt2s() && _data->cmt3.getCmt2s()->getCmt1s() )
         fd = _data->cmt3.getCmt2s()->getCmt1s()->getHandle();
     return fd;
 }

@@ -21,7 +21,7 @@ namespace xsens_imu {
 
             bool setReadingMode(enum xsens_imu::imuMode = ONLY_ORI_DATA);
             bool setCalibrationMode();
-            uint32_t getFileHandle();
+            int getFileHandle();
 
             /**
              * This function acquires a new sensor reading 
