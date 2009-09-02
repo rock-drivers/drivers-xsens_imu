@@ -3,6 +3,7 @@
 
 #include <string>
 #include <Eigen/Geometry> 
+#include <stdint.h>
 
 #include "XsensTypes.hpp"
 
