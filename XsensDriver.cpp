@@ -212,6 +212,7 @@ int XsensDriver::getPacketCounter() {
 }
 
 Eigen::Quaternion<double> XsensDriver::getOrientation() const {
+  // Eigen Quaternion format: w, x, y, z
   return Eigen::Quaternion<double>(_data->qat_data.m_data[0], _data->qat_data.m_data[1], _data->qat_data.m_data[2], _data->qat_data.m_data[3]);
 }
 
