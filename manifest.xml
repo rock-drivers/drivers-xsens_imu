@@ -1,0 +1,11 @@
+<package>
+  <description brief="driver for the Xsens MTi IMU">
+  </description>
+  <author>Janosch Machowinski/janosch.machowinski@dfki.de</author>
+  <copyright>
+      DFKI/robotik@dfki.de
+  </copyright>
+  <license>LGPL v2 or later</license>
+
+  <rosdep name="eigen" />
+</package>
