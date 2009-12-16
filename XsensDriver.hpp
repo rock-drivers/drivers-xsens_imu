@@ -76,6 +76,24 @@ namespace xsens_imu {
              **/
             Eigen::Vector3d getCalibratedMagData() const;
 
+            /**
+             * Returns the raw accelerometer data
+             * Note getReading() should be called before calling this function
+             **/
+            Eigen::Vector3d getRawAccData() const;
+
+            /**
+             * Returns the raw gyroscope data
+             * Note getReading() should be called before calling this function
+             **/
+            Eigen::Vector3d getRawGyroData() const;
+
+            /**
+             * Returns the raw magnetometer data
+             * Note getReading() should be called before calling this function
+             **/
+            Eigen::Vector3d getRawMagData() const;
+
         private:
             XsensData* _data;
    };

@@ -13,6 +13,7 @@ namespace xsens_imu {
             xsens::Cmt3 cmt3;
             xsens::Packet* packet;
             CmtCalData caldata;
+            CmtRawData rawdata;
             CmtQuat qat_data;
     };
 }

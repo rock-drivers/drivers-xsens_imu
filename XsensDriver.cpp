@@ -136,6 +136,14 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
             //tell IMU to give us orientation as quaternion
             settings = CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION;
             break;
+        case RAW_DATA:
+            //configure IMU in raw data mode
+            //cannot be combined with calibrated data mode
+            mode = CMT_OUTPUTMODE_RAW;
+
+            //tell IMU to give us orientation as quaternion
+            settings = 0;
+            break;
     }
 
     //add timestamps to data
@@ -198,6 +206,7 @@ enum xsens_imu::errorCodes XsensDriver::getReading() {
       
     case XRV_OK:
       _data->caldata  = _data->packet->getCalData(0);
+      _data->rawdata  = _data->packet->getRawData(0);
       _data->qat_data = _data->packet->getOriQuat(0);
 
       return NO_ERROR;
@@ -226,5 +235,17 @@ Eigen::Vector3d XsensDriver::getCalibratedGyroData() const {
 
 Eigen::Vector3d XsensDriver::getCalibratedMagData() const {
   return Eigen::Vector3d(_data->caldata.m_mag.m_data[0], _data->caldata.m_mag.m_data[1], _data->caldata.m_mag.m_data[2]);
+}
+
+Eigen::Vector3d XsensDriver::getRawAccData() const {
+  return Eigen::Vector3d(_data->rawdata.m_acc.m_data[0], _data->rawdata.m_acc.m_data[1], _data->rawdata.m_acc.m_data[2]);
+}
+
+Eigen::Vector3d XsensDriver::getRawGyroData() const {
+  return Eigen::Vector3d(_data->rawdata.m_gyr.m_data[0], _data->rawdata.m_gyr.m_data[1], _data->rawdata.m_gyr.m_data[2]);
+}
+
+Eigen::Vector3d XsensDriver::getRawMagData() const {
+  return Eigen::Vector3d(_data->rawdata.m_mag.m_data[0], _data->rawdata.m_mag.m_data[1], _data->rawdata.m_mag.m_data[2]);
 }
 

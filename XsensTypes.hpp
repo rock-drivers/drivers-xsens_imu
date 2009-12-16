@@ -12,7 +12,8 @@ namespace xsens_imu {
     enum imuMode {
         ONLY_CAL_DATA,
         ONLY_ORI_DATA,
-        CAL_AND_ORI_DATA
+        CAL_AND_ORI_DATA,
+        RAW_DATA
     };
 }
 
