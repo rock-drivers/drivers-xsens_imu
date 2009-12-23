@@ -7,5 +7,5 @@
   </copyright>
   <license>LGPL v2 or later</license>
 
-  <rosdep name="eigen" />
+  <rosdep name="eigen2" />
 </package>

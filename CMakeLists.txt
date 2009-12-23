@@ -34,5 +34,3 @@ INSTALL(FILES XsensDriver.hpp XsensTypes.hpp DESTINATION include)
 CONFIGURE_FILE(xsens.pc.in xsens.pc @ONLY)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/xsens.pc DESTINATION lib/pkgconfig)
 
-
-
