@@ -1,15 +1,21 @@
 #include "XsensDriver.hpp"
 #include <iostream>
 #include <iomanip>
+#include <boost/lexical_cast.hpp>
 
 using namespace std;
 int main(int argc, char* argv[]) {
     if(argc < 2) {  
-        std::cout << "usage xsensTest <device>" << std::endl;
+        std::cout << "usage xsensTest <device> [count]" << std::endl;
         exit(1);
     }
 
     std::string dev(argv[1]);
+
+    int count = 100;
+    if (argc == 3)
+        count = boost::lexical_cast<int>(argv[2]);
+
 
     xsens_imu::XsensDriver driver;
 
@@ -35,8 +41,7 @@ int main(int argc, char* argv[]) {
         << " " << setw(10) << "q.z"
         << " " << setw(10) << "q.w" << std::endl;
 
-    int i=100;
-    while(i--) {
+    while(count--) {
         int ret = driver.getReading();
         if( ret == xsens_imu::NO_ERROR ) {
             std::cout << setw(10) << driver.getPacketCounter()
