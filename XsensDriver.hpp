@@ -4,6 +4,8 @@
 #include <string>
 #include <Eigen/Geometry> 
 #include <stdint.h>
+#include <list>
+#include <map>
 
 #include "XsensTypes.hpp"
 
@@ -94,8 +96,17 @@ namespace xsens_imu {
              **/
             Eigen::Vector3d getRawMagData() const;
 
+	    /**
+	     * Returns the list of scenario names that are available on this device
+	     */
+	    std::list<std::string> getScenarios() const;
+
+	    std::list<std::string> getAvailableScenarios();
+	    bool setScenario(std::string const& name);
+
         private:
             XsensData* _data;
+	    std::map< std::string, int > m_scenarios;
    };
 }
 

@@ -3,6 +3,7 @@
 #include "XsensData.hpp"
 #include "XsensDriver.hpp"
 #include <iostream>
+#include <stdexcept>
 
 using namespace std;
 using namespace xsens_imu;
@@ -186,7 +187,62 @@ bool XsensDriver::setTimeout(const uint32_t timeout) {
   return !_data->cmt3.setTimeoutMeasurement(timeout);
 }
 
+std::list<std::string> XsensDriver::getAvailableScenarios() {
+  std::list<std::string> result;
+  CmtScenario available_scenarios[CMT_MAX_SCENARIOS + 1];
 
+  XsensResultValue ret = _data->cmt3.gotoConfig();
+  if (ret != XRV_OK)
+    throw std::runtime_error("cannot go into config");
+  _data->cmt3.getAvailableScenarios(available_scenarios);
+  ret = _data->cmt3.gotoMeasurement();
+  if (ret != XRV_OK)
+    throw std::runtime_error("cannot go into measurement");
+  
+  m_scenarios.clear();
+  for (int i = 0; i < CMT_MAX_SCENARIOS; ++i)
+  {
+    if (available_scenarios[i].m_type == 0) break;
+    std::string name(available_scenarios[i].m_label);
+    int space = name.find_first_of(" ");
+    name.erase(space);
+    m_scenarios[name] = available_scenarios[i].m_type;
+    result.push_back(name);
+
+    std::cerr << name << "=" << (int)available_scenarios[i].m_type << std::endl;
+  }
+  return result;
+}
+
+bool XsensDriver::setScenario(std::string const& name) {
+  if (m_scenarios.empty())
+    getAvailableScenarios();
+
+  XsensResultValue ret = _data->cmt3.gotoConfig();
+  if (ret != XRV_OK)
+    return false;
+
+  map<string, int>::const_iterator type = m_scenarios.find(name);
+  if (type == m_scenarios.end())
+  {
+    std::cerr << "this Xsens has no scenario called '" << name << "'" << std::endl;
+    return false;
+  }
+
+  std::cerr << "setting ID: " << type->second << std::endl;
+  if (_data->cmt3.setScenario(type->second) != XRV_OK);
+  {
+    std::cerr << "failed to switch the scenario to " << name << std::endl;
+    return false;
+  }
+
+  if (_data->cmt3.gotoMeasurement() != XRV_OK)
+  {
+    std::cerr << "failed to switch back to measurement mode" << std::endl;
+    return false;
+  }
+  return true;
+}
 
 enum xsens_imu::errorCodes XsensDriver::getReading() {
 
@@ -248,4 +304,5 @@ Eigen::Vector3d XsensDriver::getRawGyroData() const {
 Eigen::Vector3d XsensDriver::getRawMagData() const {
   return Eigen::Vector3d(_data->rawdata.m_mag.m_data[0], _data->rawdata.m_mag.m_data[1], _data->rawdata.m_mag.m_data[2]);
 }
+
 

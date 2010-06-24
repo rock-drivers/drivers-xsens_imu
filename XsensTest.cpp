@@ -24,6 +24,11 @@ int main(int argc, char* argv[]) {
     if (! driver.setReadingMode(xsens_imu::CAL_AND_ORI_DATA))
         return 1;
 
+    std::cout << "available scenarios: " << std::endl;
+    std::list<std::string> scenarios = driver.getAvailableScenarios();
+    for (std::list<std::string>::const_iterator it = scenarios.begin(); it != scenarios.end(); ++it)
+    	std::cout << "  '" << *it << "'" << std::endl;
+
     std::cout << "file handle: " << driver.getFileHandle() << std::endl << std::endl;
 
     std::cout << setw(10) << "packet_id"
