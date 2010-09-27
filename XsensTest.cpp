@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     while(count--) {
         int ret = driver.getReading();
         if( ret == xsens_imu::NO_ERROR ) {
-	    Eigen::Vector3d euler = driver.getOrientation().toRotationMatrix().eulerAngles(2,1,0);
+	    Eigen::Vector3d euler = driver.getOrientation().toRotationMatrix().eulerAngles(2,1,0) / M_PI * 180.0;
 
             std::cout << setw(10) << driver.getPacketCounter()
                 << " " << setw(10) << driver.getCalibratedAccData().x()
