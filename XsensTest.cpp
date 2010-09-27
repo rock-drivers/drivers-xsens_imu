@@ -6,7 +6,7 @@
 using namespace std;
 int main(int argc, char* argv[]) {
     if(argc < 2) {  
-        std::cout << "usage xsensTest <device> [count]" << std::endl;
+        std::cout << "usage: xsensTest <device> [count]" << std::endl;
         exit(1);
     }
 
@@ -44,11 +44,17 @@ int main(int argc, char* argv[]) {
         << " " << setw(10) << "q.x"
         << " " << setw(10) << "q.y"
         << " " << setw(10) << "q.z"
-        << " " << setw(10) << "q.w" << std::endl;
+        << " " << setw(10) << "q.w" 
+        << " " << setw(10) << "euler.z" 
+        << " " << setw(10) << "euler.y"
+        << " " << setw(10) << "euler.x" 
+	<< std::endl;
 
     while(count--) {
         int ret = driver.getReading();
         if( ret == xsens_imu::NO_ERROR ) {
+	    Eigen::Vector3d euler = driver.getOrientation().toRotationMatrix().eulerAngles(2,1,0);
+
             std::cout << setw(10) << driver.getPacketCounter()
                 << " " << setw(10) << driver.getCalibratedAccData().x()
                 << " " << setw(10) << driver.getCalibratedAccData().y()
@@ -62,7 +68,11 @@ int main(int argc, char* argv[]) {
                 << " " << setw(10) << driver.getOrientation().x()
                 << " " << setw(10) << driver.getOrientation().y()
                 << " " << setw(10) << driver.getOrientation().z()
-                << " " << setw(10) << driver.getOrientation().w() << std::endl;
+                << " " << setw(10) << driver.getOrientation().w() 
+                << " " << setw(10) << euler[0]
+                << " " << setw(10) << euler[1]
+                << " " << setw(10) << euler[2]
+		<< std::endl;
         }
 
         if( ret == xsens_imu::ERROR_TIMEOUT ) {
