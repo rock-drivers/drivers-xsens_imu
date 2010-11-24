@@ -1,11 +1,22 @@
 <package>
   <description brief="driver for the Xsens MTi IMU">
+      This driver package includes code that is 
   </description>
   <author>Janosch Machowinski/janosch.machowinski@dfki.de</author>
   <copyright>
       DFKI/robotik@dfki.de
+
+      It includes the Xsens vendor library that is copyright (c) Xsens
+      Technologies BV and should only be used by people that have a license for
+      this software -- which means people that bought an Xsens IMU hardware.
   </copyright>
-  <license>LGPL v2 or later</license>
+  <license>The non-Xsens part is LGPL v2 or later
+
+      The Xsens vendor library is copyright (c) Xsens Technologies BV and should
+      only be used by people that have a license for this software -- which
+      means people that bought an Xsens IMU hardware.
+  </license>
 
   <rosdep name="eigen2" />
 </package>
+
