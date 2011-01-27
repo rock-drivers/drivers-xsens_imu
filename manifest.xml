@@ -18,5 +18,6 @@
   </license>
 
   <rosdep name="eigen2" />
+  <tags>stable</tags>
 </package>
 
