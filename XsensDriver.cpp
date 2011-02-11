@@ -67,7 +67,7 @@ bool XsensDriver::setCalibrationMode()
 {
     int cmt_output  = CMT_OUTPUTMODE_RAW;
     int cmt_options = CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT;
-    int sample_freq = 100;
+    int sample_freq = XsensDriver::SAMPLE_FREQUENCY;
 
     // Set sensor to config state
     XsensResultValue ret = _data->cmt3.gotoConfig();

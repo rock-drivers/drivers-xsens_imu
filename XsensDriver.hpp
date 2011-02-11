@@ -15,6 +15,7 @@ namespace xsens_imu {
 
     class XsensDriver {
         public:
+            static const int SAMPLE_FREQUENCY = 100;
 
             XsensDriver();
             ~XsensDriver();
