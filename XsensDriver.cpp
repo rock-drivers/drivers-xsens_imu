@@ -8,7 +8,10 @@
 using namespace std;
 using namespace xsens_imu;
 
-XsensDriver::XsensDriver() {
+XsensDriver::XsensDriver()
+	: last_samplectr(0)
+	, samplectr_offset(0)
+{
     _data = new XsensData();
     _data->packet = NULL;
 }
@@ -169,6 +172,14 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
         return false;
     }
 
+    CmtSyncOutSettings syncOutSettings(CMT_SYNCOUT_TYPE_PULSE
+				       | CMT_SYNCOUT_POL_POS);
+    ret = _data->cmt3.setSyncOutSettings(syncOutSettings);
+    if(ret != XRV_OK) {
+        std::cerr << "xsens: failed to set sync out settings " << xsensResultText(ret) << std::endl;
+        return false;
+    }
+
    // Go into measurement mode
     ret = _data->cmt3.gotoMeasurement();
     if (ret != XRV_OK)
@@ -273,7 +284,12 @@ enum xsens_imu::errorCodes XsensDriver::getReading() {
 }
 
 int XsensDriver::getPacketCounter() {
-  return _data->packet->getSampleCounter();
+  uint16_t ctr = _data->packet->getSampleCounter();
+  if (ctr < last_samplectr) {
+    samplectr_offset += 65536;
+  }
+  last_samplectr = ctr;
+  return samplectr_offset + ctr;
 }
 
 Eigen::Quaternion<double> XsensDriver::getOrientation() const {
