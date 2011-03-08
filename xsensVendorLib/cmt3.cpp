@@ -3,18 +3,18 @@
 	For information about objects in this file, see the appropriate header:
 	\ref Cmt3.h
 
-	\section FileCopyright Copyright Notice 
+	\section FileCopyright Copyright Notice
 	Copyright (C) Xsens Technologies B.V., 2006.  All rights reserved.
-	
+
 	This source code is intended for use only by Xsens Technologies BV and
 	those that have explicit written permission to use it from
 	Xsens Technologies BV.
-	
+
 	THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
 	KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 	PARTICULAR PURPOSE.
-	
+
 	\section FileChangelog	Changelog
 	\par 2006-04-28, v0.0.1
 	\li Job Mulder:	Created
@@ -25,18 +25,20 @@
 #include "cmt3.h"
 #include <math.h>
 #include "xsens_janitors.h"
+#include "xsens_time.h"
 
-#ifdef _LOG_CMT3
+
+#ifdef XSENS_DEBUG
 #	define CMT3LOG		CMTLOG
-#	define CMT3EXITLOG	JanitorLogFunc<XsensResultValue,uint32_t> _cmtExitLog(CMTLOG,"L3: " __FUNCTION__ " returns %u\n",m_lastResult);
+#	define CMT3EXITLOG	JanitorLogFunc<XsensResultValue,uint32_t> _cmtExitLog(CMTLOG, __FUNCTION__ " returns %u\n",m_lastResult);
 #else
 #	define CMT3LOG(...)
 #	define CMT3EXITLOG
 #endif
 
-#ifdef _LOG_CMT3_DATA
+#if 0 // def LOG_CMT3_DATA
 #	define CMT3LOGDAT		CMTLOG
-#	define CMT3EXITLOGDAT	JanitorLogFunc<XsensResultValue,uint32_t> _cmtExitLog(CMTLOG,"L3: " __FUNCTION__ " returns %u\n",m_lastResult);
+#	define CMT3EXITLOGDAT	JanitorLogFunc<XsensResultValue,uint32_t> _cmtExitLog(CMTLOG, __FUNCTION__ " returns %u\n",m_lastResult);
 #else
 #	define CMT3LOGDAT(...)
 #	define CMT3EXITLOGDAT
@@ -64,13 +66,19 @@ void CmtDeviceConfiguration::readFromMessage(const void* message)
 	memcpy(m_reservedForClient,msg.getDataBuffer(64),32);
 	m_numberOfDevices = msg.getDataShort(96);
 
-	for (uint16_t i = 0; i < m_numberOfDevices; ++i)
+	for (uint16_t i = 0; i < m_numberOfDevices && i < CMT_MAX_DEVICES_PER_PORT; ++i)
 	{
 		m_deviceInfo[i].m_deviceId = msg.getDataLong(98+i*20);
 		m_deviceInfo[i].m_dataLength = msg.getDataShort(102+i*20);
 		m_deviceInfo[i].m_outputMode = msg.getDataShort(104+i*20);
 		m_deviceInfo[i].m_outputSettings = msg.getDataLong(106+i*20);
-		memcpy(m_deviceInfo[i].m_reserved,msg.getDataBuffer(110+i*20),8);
+		m_deviceInfo[i].m_currentScenario = msg.getDataShort(110+i*20);
+		m_deviceInfo[i].m_fwRevMajor = msg.getDataByte(112+i*20);
+		m_deviceInfo[i].m_fwRevMinor = msg.getDataByte(113+i*20);
+		m_deviceInfo[i].m_fwRevRevision = msg.getDataByte(114+i*20);
+		m_deviceInfo[i].m_filterType = msg.getDataByte(115+i*20);
+		m_deviceInfo[i].m_filterMajor = msg.getDataByte(116+i*20);
+		m_deviceInfo[i].m_filterMinor = msg.getDataByte(117+i*20);
 	}
 }
 
@@ -96,6 +104,11 @@ void CmtDeviceMode::getPeriodAndSkipFactor(uint16_t& period,uint16_t& skip) cons
 	// first try the simple ones
 	skip = 0;
 	freq = sf;
+	if (120 % freq == 0 && freq < 120) {
+		freq = 120;
+	} else if (100 % freq == 0 && freq < 100) {
+		freq = 100;
+	}
 	while (freq < 100)
 	{
 		++skip;
@@ -296,6 +309,7 @@ namespace xsens {
 //////////////////////////////////////////////////////////////////////////////////////////
 // Default constructor, initializes all members to their default values.
 Cmt3::Cmt3()
+: m_rtcSync(0, 20)
 {
 	m_lastResult = XRV_OK;
 	m_rtcInitialized = false;
@@ -331,12 +345,12 @@ Cmt3::~Cmt3()
 // Close the serial communication port.
 XsensResultValue Cmt3::closePort(bool gotoConfigFirst)
 {
-	CMT3LOG("L3: closePort\n");
+	CMT3LOG(__FUNCTION__ " closePort\n");
 	CMT3EXITLOG;
 
 	if (m_measuring && gotoConfigFirst)
 		gotoConfig();
-	CMT3LOG("L3: Closing L2 port\n");
+	CMT3LOG(__FUNCTION__ " Closing L2 port\n");
 	m_serial.close();
 	m_measuring = false;
 	if (m_logFile.isOpen())
@@ -350,23 +364,17 @@ XsensResultValue Cmt3::closePort(bool gotoConfigFirst)
 //////////////////////////////////////////////////////////////////////////////////////////
 void Cmt3::fillRtc(Packet* pack)
 {
-#if defined(_DEBUG) || defined(_LOG_ALWAYS)
-	TimeStamp rt = 0;
-#endif
+//#if defined(_DEBUG) || defined(CMT_LOG_ALWAYS)
+//	TimeStamp rt = 0;
+//#endif
 
 	if (!m_rtcInitialized)
 	{
-		m_rtcStart = pack->m_toa;
+		//m_rtcStart = pack->m_toa;
 		m_rtcLastSc = pack->getSampleCounter();
 		m_rtcCount = m_rtcLastSc;
-#ifdef _CORRECT_FOR_CLOCK_MISMATCH
-		m_lastToaTouch = m_rtcLastSc;
-#endif
-		CmtDeviceMode2 mode;
-		mode.m_period = m_period;
-		mode.m_skip = m_skip;
-		m_rtcMsPerSample = 1000.0 / mode.getRealSampleFrequency();
-		pack->m_rtc = m_rtcStart;
+		m_rtcSync.setInitialSkew(1000.0 / getSampleFrequency());
+		m_rtcSync.update(pack->m_toa, m_rtcCount);
 		m_rtcInitialized = true;
 	}
 	else
@@ -375,28 +383,36 @@ void Cmt3::fillRtc(Packet* pack)
 		CmtMtTimeStamp scdiff = sc - m_rtcLastSc;
 		m_rtcLastSc = sc;
 		m_rtcCount += scdiff;
-		pack->m_rtc = m_rtcStart + (TimeStamp) floor(m_rtcMsPerSample * (double) m_rtcCount + 0.5);
-#ifdef _CORRECT_FOR_CLOCK_MISMATCH
-#if defined(_DEBUG) || defined(_LOG_ALWAYS)
-		rt = pack->m_rtc;
-#endif
-		// detect if arrival times are lower than expected
-		// if so, we update the start time to correct for this
-		if (pack->m_toa < pack->m_rtc)
-		{
-			m_lastToaTouch = m_rtcCount;
-			// adjust start time to match new, earlier TOA
-			TimeStamp diff = pack->m_rtc - pack->m_toa;
 
-			m_rtcStart -= diff;
-			pack->m_rtc = pack->m_toa;
-		}
-		else if (pack->m_toa == pack->m_rtc)
-			m_lastToaTouch = m_rtcCount;
-		else if (((m_rtcCount-m_lastToaTouch) & 127) == 0)
-			++m_rtcStart;	// we adjust the start time upwards by max 1ms per 128 samples
-#endif
+		m_rtcSync.update(pack->m_toa, m_rtcCount);
 	}
+	// we compute the correct local time of the supplied RTC (which is in external time units)
+	pack->m_rtc = m_rtcSync.localTime(m_rtcCount);
+	CMT3LOG(__FUNCTION__ " SC: %u TOA: %I64d RTC: %I64d\n", m_rtcCount, pack->m_toa, pack->m_rtc);
+//
+//
+//		pack->m_rtc = m_rtcStart + (TimeStamp) floor(m_rtcMsPerSample * (double) m_rtcCount + 0.5);
+//#ifdef _CORRECT_FOR_CLOCK_MISMATCH
+//#if defined(_DEBUG) || defined(CMT_LOG_ALWAYS)
+//		rt = pack->m_rtc;
+//#endif
+//		// detect if arrival times are lower than expected
+//		// if so, we update the start time to correct for this
+//		if (pack->m_toa < pack->m_rtc)
+//		{
+//			m_lastToaTouch = m_rtcCount;
+//			// adjust start time to match new, earlier TOA
+//			TimeStamp diff = pack->m_rtc - pack->m_toa;
+//
+//			m_rtcStart -= diff;
+//			pack->m_rtc = pack->m_toa;
+//		}
+//		else if (pack->m_toa == pack->m_rtc)
+//			m_lastToaTouch = m_rtcCount;
+//		else if (((m_rtcCount-m_lastToaTouch) & 127) == 0)
+//			++m_rtcStart;	// we adjust the start time upwards by max 1ms per 128 samples
+//#endif
+//	}
 	//CMT3LOG(__FUNCTION__ " rtcStart: %I64u rtcPack: %I64u toa: %I64u\n",m_rtcStart,pack->m_rtc,pack->m_toa);
 //	CMT3LOG("%I64u %I64u %I64u %I64u 101010101 %u\n",m_rtcStart,rt,pack->m_toa,pack->m_rtc,(long) this);
 }
@@ -407,7 +423,7 @@ obsolete:
 // Get the state (enabled/disabled) of the AMD algorithm
 XsensResultValue Cmt3::getAmdState(bool& state, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getAmdState %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQAMD);
@@ -420,7 +436,7 @@ XsensResultValue Cmt3::getAmdState(bool& state, const CmtDeviceId deviceId)
 // Get the XM batery level
 XsensResultValue Cmt3::getBatteryLevel(uint8_t& level)
 {
-	CMT3LOG("L3: getBatteryLevel\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST_BID(CMT_MID_REQBATLEVEL,CMT_BID_MASTER);
@@ -432,7 +448,7 @@ XsensResultValue Cmt3::getBatteryLevel(uint8_t& level)
 // Get the baudrate that is currently being used by the port
 XsensResultValue Cmt3::getBaudrate(uint32_t& baudrate)
 {
-	CMT3LOG("L3: getBaudrate\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	if (!m_serial.isOpen())
@@ -445,7 +461,7 @@ XsensResultValue Cmt3::getBaudrate(uint32_t& baudrate)
 // Get the state of the bluetooth communication, on (true) or off (false)
 XsensResultValue Cmt3::getBluetoothState(bool& enabled)
 {
-	CMT3LOG("L3: getBluetoothState\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST_BID(CMT_MID_REQBTDISABLE,CMT_BID_MASTER);
@@ -457,7 +473,7 @@ XsensResultValue Cmt3::getBluetoothState(bool& enabled)
 // Retrieve the BusId of a device.
 XsensResultValue Cmt3::getBusId (uint8_t& busId, const CmtDeviceId deviceId) const
 {
-	CMT3LOG("L3: getBusId %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	if (deviceId == CMT_DID_MASTER || deviceId == m_config.m_masterDeviceId)
@@ -499,7 +515,7 @@ uint8_t Cmt3::getBusIdInternal(const CmtDeviceId devId) const
 // Retrieve the XM bus power state.
 XsensResultValue Cmt3::getBusPowerState(bool& enabled)
 {
-	CMT3LOG("L3: getBusPowerState\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST_BID(CMT_MID_BUSPWR,CMT_BID_MASTER);
@@ -523,12 +539,15 @@ Cmt2s* Cmt3::getCmt2s(void)
 // Retrieve the complete device configuration of a device.
 XsensResultValue Cmt3::getConfiguration(CmtDeviceConfiguration& configuration)
 {
-	CMT3LOG("L3: getConfiguration\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	if (!(m_serial.isOpen() || m_logFile.isOpen()))
 		return m_lastResult = XRV_INVALIDOPERATION;
-	
+
+	if (m_config.m_numberOfDevices > CMT_MAX_DEVICES_PER_PORT)
+		return m_lastResult = XRV_CONFIGCHECKFAIL;
+
 	memcpy(&configuration,&m_config,sizeof(CmtDeviceConfiguration));
 
 	if (m_logging)
@@ -536,13 +555,13 @@ XsensResultValue Cmt3::getConfiguration(CmtDeviceConfiguration& configuration)
 		// fake the message receipt
 		Message msg(CMT_MID_CONFIGURATION,98 + CMT_CONF_BLOCKLEN*m_config.m_numberOfDevices);
 		msg.setBusId(CMT_BID_MASTER);
-		
+
 		msg.setDataLong(m_config.m_masterDeviceId, 0);
 		msg.setDataShort(m_config.m_samplingPeriod, 4);
 		msg.setDataShort(m_config.m_outputSkipFactor, 6);
 		msg.setDataShort(m_config.m_syncinMode, 8);
 		msg.setDataShort(m_config.m_syncinSkipFactor, 10);
-		msg.setDataLong(m_config.m_syncinOffset, 12);
+		msg.setDataLong(m_config.m_syncinOffset, 12);		
 		memcpy(msg.getDataBuffer(16), m_config.m_date,8);
 		memcpy(msg.getDataBuffer(24), m_config.m_time, 8);
 		memcpy(msg.getDataBuffer(32), m_config.m_reservedForHost,32);
@@ -555,7 +574,13 @@ XsensResultValue Cmt3::getConfiguration(CmtDeviceConfiguration& configuration)
 			msg.setDataShort(m_config.m_deviceInfo[i].m_dataLength, 102+i*20);
 			msg.setDataShort(m_config.m_deviceInfo[i].m_outputMode, 104+i*20);
 			msg.setDataLong(m_config.m_deviceInfo[i].m_outputSettings, 106+i*20);
-			memcpy(msg.getDataBuffer(110+i*20), m_config.m_deviceInfo[i].m_reserved,8);
+			msg.setDataShort(m_config.m_deviceInfo[i].m_currentScenario, 110+i*20);
+			msg.setDataByte(m_config.m_deviceInfo[i].m_fwRevMajor, 112+i*20);
+			msg.setDataByte(m_config.m_deviceInfo[i].m_fwRevMinor, 113+i*20);
+			msg.setDataByte(m_config.m_deviceInfo[i].m_fwRevRevision, 114+i*20);
+			msg.setDataByte(m_config.m_deviceInfo[i].m_filterType, 115+i*20);
+			msg.setDataByte(m_config.m_deviceInfo[i].m_filterMajor, 116+i*20);
+			msg.setDataByte(m_config.m_deviceInfo[i].m_filterMinor, 117+i*20);
 		}
 
 		msg.recomputeChecksum();
@@ -569,7 +594,7 @@ XsensResultValue Cmt3::getConfiguration(CmtDeviceConfiguration& configuration)
 // Retrieve the number of bytes that are in a data message as sent by the device.
 XsensResultValue Cmt3::getDataLength(uint32_t& length, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getDataLength %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQDATALENGTH);
@@ -581,7 +606,7 @@ XsensResultValue Cmt3::getDataLength(uint32_t& length, const CmtDeviceId deviceI
 // Return the number of connected devices. Returns 0 if not connected.
 uint32_t Cmt3::getDeviceCount (void) const
 {
-	CMT3LOG("L3: getDeviceCount\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	if (m_serial.isOpen() || m_logFile.isOpen())
 	{
 		if (isXm())
@@ -593,10 +618,10 @@ uint32_t Cmt3::getDeviceCount (void) const
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// Retrieve the CmtDeviceId of the device at the given BusId 
+// Retrieve the CmtDeviceId of the device at the given BusId
 XsensResultValue Cmt3::getDeviceId(const uint8_t busId, CmtDeviceId& deviceId) const
 {
-	CMT3LOG("L3: getDeviceId %u\n",(uint32_t) busId);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) busId);
 	CMT3EXITLOG;
 
 	if (busId == CMT_BID_MASTER || busId == 0)
@@ -614,7 +639,7 @@ XsensResultValue Cmt3::getDeviceId(const uint8_t busId, CmtDeviceId& deviceId) c
 // Retrieve the complete device output mode of a device.
 XsensResultValue Cmt3::getDeviceMode(CmtDeviceMode& mode, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getDeviceMode %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	CmtDeviceMode2 mode2;
@@ -632,7 +657,7 @@ XsensResultValue Cmt3::getDeviceMode(CmtDeviceMode& mode, const CmtDeviceId devi
 // Retrieve the complete device output mode of a device.
 XsensResultValue Cmt3::getDeviceMode2(CmtDeviceMode2& mode, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getDeviceMode2 %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	uint8_t bid = getBusIdInternal(deviceId);
@@ -648,7 +673,7 @@ XsensResultValue Cmt3::getDeviceMode2(CmtDeviceMode2& mode, const CmtDeviceId de
 	//mode.m_sampleFrequency = (uint16_t) floor(m_sampleFrequency+0.5);
 	mode.m_outputMode = m_config.m_deviceInfo[bid-1].m_outputMode;
 	mode.m_outputSettings = m_config.m_deviceInfo[bid-1].m_outputSettings;
-	
+
 	return m_lastResult = XRV_OK;
 }
 
@@ -657,7 +682,7 @@ XsensResultValue Cmt3::getDeviceMode2(CmtDeviceMode2& mode, const CmtDeviceId de
 #define _XM_SMALL_PACKETS_EMTS 0
 XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getEMtsData %p %08x\n",buffer,deviceId);
+	CMT3LOG(__FUNCTION__ " %p %08x\n", buffer, deviceId);
 	CMT3EXITLOG;
 
 	uint8_t bid = getBusIdInternal(deviceId);
@@ -669,7 +694,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 		return m_lastResult = XRV_NOFILEOPEN;
 	if (buffer == NULL)
 		return m_lastResult = XRV_NULLPTR;
-		
+
 	if (bid == CMT_BID_BROADCAST)
 	{
 		memset(buffer,0,m_config.m_numberOfDevices * CMT_EMTS_SIZE);
@@ -678,7 +703,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 		for (uint32_t dev=0; dev < m_config.m_numberOfDevices; ++dev)
 			if (getEMtsData(buf+dev*CMT_EMTS_SIZE,m_config.m_deviceInfo[dev].m_deviceId) != XRV_OK)
 				return m_lastResult;
-		//CMT3LOG("L3: getEMtsData (%08x) returns %d\n",deviceId,(int32_t)m_lastResult);
+		//CMT3LOG(__FUNCTION__ " returns %d\n", (int32_t)m_lastResult);
 		return m_lastResult;
 	}
 
@@ -688,7 +713,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 	{
 		if (bid == CMT_BID_MASTER)
 		{
-			//CMT3LOG("L3: getEMtsData (%08x) returns XRV_INVALIDID\n",deviceId);
+			//CMT3LOG(__FUNCTION__ " returns XRV_INVALIDID\n");
 			return m_lastResult = XRV_INVALIDID;
 		}
 		dataIndex = bid-1;
@@ -699,6 +724,8 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 	if (m_eMtsData[dataIndex] == NULL)
 	{
 		m_eMtsData[dataIndex] = malloc(CMT_EMTS_SIZE);
+		if (!m_eMtsData[dataIndex])
+			return XRV_OUTOFMEMORY;
 
 		// Xbus requires small data packets
 #if _XM_SMALL_PACKETS_EMTS
@@ -728,7 +755,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 					if (m_lastResult != XRV_OK)
 					{
 						FREENUL(m_eMtsData[dataIndex]);
-						//CMT3LOG("L3: getEMtsData (%08x) returns %d\n",deviceId,(int32_t)m_lastResult);
+						//CMT3LOG(__FUNCTION__ " returns %d\n", (int32_t)m_lastResult);
 						return m_lastResult;
 					}
 					if (!m_readFromFile && m_logging)
@@ -743,7 +770,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 						}
 						m_lastResult = m_lastHwError = (XsensResultValue) rcv.getDataByte(0);
 						FREENUL(m_eMtsData[dataIndex]);
-						//CMT3LOG("L3: getEMtsData (%08x) returns %d\n",deviceId,(int32_t)m_lastResult);
+						//CMT3LOG(__FUNCTION__ " returns %d\n", (int32_t)m_lastResult);
 						return m_lastResult;
 					}
 
@@ -771,7 +798,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 			if (m_lastResult != XRV_OK)
 			{
 				FREENUL(m_eMtsData[dataIndex]);
-				//CMT3LOG("L3: getEMtsData (%08x) returns %d\n",deviceId,(int32_t)m_lastResult);
+				//CMT3LOG(__FUNCTION__ " returns %d\n", (int32_t)m_lastResult);
 				return m_lastResult;
 			}
 			if (!m_readFromFile && m_logging)
@@ -786,11 +813,11 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 				}
 				m_lastResult = m_lastHwError = (XsensResultValue) rcv.getDataByte(0);
 				FREENUL(m_eMtsData[dataIndex]);
-				//CMT3LOG("L3: getEMtsData (%08x) returns %d\n",deviceId,(int32_t)m_lastResult);
+				//CMT3LOG(__FUNCTION__ " returns %d\n", (int32_t)m_lastResult);
 				return m_lastResult;
 			}
 
-			memcpy(m_eMtsData[dataIndex],rcv.getDataBuffer(),CMT_EMTS_SIZE);
+			memcpy(m_eMtsData[dataIndex],rcv.getDataBuffer(),rcv.getDataSize());//CMT_EMTS_SIZE);
 #if _XM_SMALL_PACKETS_EMTS
 		}
 #endif
@@ -804,7 +831,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 	}
 
 	memcpy(buffer,m_eMtsData[dataIndex],CMT_EMTS_SIZE);
-	//CMT3LOG("L3: getEMtsData (%08x) returns XRV_OK\n",deviceId);
+	//CMT3LOG(__FUNCTION__ " returns XRV_OK\n");
 	return m_lastResult = XRV_OK;
 }
 
@@ -812,7 +839,7 @@ XsensResultValue Cmt3::getEMtsData(void* buffer, const CmtDeviceId deviceId)
 // Retrieve the error mode
 XsensResultValue Cmt3::getErrorMode(uint16_t& mode, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getErrorMode %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -839,7 +866,7 @@ XsensResultValue Cmt3::getFilterSettings(CmtFilterSettings& settings, const CmtD
 	uint8_t bid = getBusIdInternal(deviceId);
 	if (bid == CMT_BID_INVALID)
 		return (m_lastResult = XRV_INVALIDID);
-	
+
 	bool xm = isXm();
 
 	if (xm && deviceId == m_config.m_masterDeviceId)
@@ -882,7 +909,7 @@ XsensResultValue Cmt3::getFilterSettings(CmtFilterSettings& settings, const CmtD
 // Retrieve the firmware revision of a device.
 XsensResultValue Cmt3::getFirmwareRevision(CmtVersion& revision, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getFirmwareRevision %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQFWREV);
@@ -898,7 +925,7 @@ XsensResultValue Cmt3::getFirmwareRevision(CmtVersion& revision, const CmtDevice
 // Retrieve the heading offset of a device. The range is -pi to +pi.
 XsensResultValue Cmt3::getHeading(double& heading, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getHeading %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQHEADING);
@@ -910,7 +937,7 @@ XsensResultValue Cmt3::getHeading(double& heading, const CmtDeviceId deviceId)
 // Retrieve the last stored position of the sensor
 XsensResultValue Cmt3::getLatLonAlt(CmtVector& lla, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getLatLonAlt %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQLATLONALT);
@@ -924,7 +951,7 @@ XsensResultValue Cmt3::getLatLonAlt(CmtVector& lla, const CmtDeviceId deviceId)
 // Retrieve the location ID of a device. The buffer should be at least 20 bytes.
 XsensResultValue Cmt3::getLocationId(uint16_t& locationId, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getLocationId %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQLOCATIONID);
@@ -934,9 +961,9 @@ XsensResultValue Cmt3::getLocationId(uint16_t& locationId, const CmtDeviceId dev
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Retrieve the current log file read position
-XsensResultValue Cmt3::getLogFileReadPosition(CmtFilePos& pos)
+XsensResultValue Cmt3::getLogFileReadPosition(XsensFilePos& pos)
 {
-	CMT3LOG("L3: getLogFileReadPosition\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	if (m_logFile.isOpen())
@@ -950,9 +977,9 @@ XsensResultValue Cmt3::getLogFileReadPosition(CmtFilePos& pos)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Retrieve the size of the log file
-XsensResultValue Cmt3::getLogFileSize(CmtFilePos& size)
+XsensResultValue Cmt3::getLogFileSize(XsensFilePos& size)
 {
-	CMT3LOG("L3: getLogFileSize\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	if (m_logFile.isOpen())
@@ -968,7 +995,7 @@ XsensResultValue Cmt3::getLogFileSize(CmtFilePos& size)
 // Retrieve the name of the open log file or an empty string if no logfile is open
 XsensResultValue Cmt3::getLogFileName(char* filename)
 {
-	CMT3LOG("L3: getLogFileName (char)\n");
+	CMT3LOG(__FUNCTION__ " (char) %p\n",filename);
 	CMT3EXITLOG;
 
 	if (m_logFile.isOpen())
@@ -981,7 +1008,7 @@ XsensResultValue Cmt3::getLogFileName(char* filename)
 // Retrieve the name of the open log file or an empty string if no logfile is open
 XsensResultValue Cmt3::getLogFileName(wchar_t* filename)
 {
-	CMT3LOG("L3: getLogFileName (wchar_t)\n");
+	CMT3LOG(__FUNCTION__ " (wchar_t) %p\n",filename);
 	CMT3EXITLOG;
 
 	if (m_logFile.isOpen())
@@ -994,7 +1021,7 @@ XsensResultValue Cmt3::getLogFileName(wchar_t* filename)
 // Return the magnetic declination. The range is -pi to +pi.
 XsensResultValue Cmt3::getMagneticDeclination(double& declination, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getMagneticDeclination %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQMAGNETICDECLINATION);
@@ -1006,7 +1033,7 @@ XsensResultValue Cmt3::getMagneticDeclination(double& declination, const CmtDevi
 // Return the device Id of the first device (master)
 CmtDeviceId Cmt3::getMasterId(void)
 {
-	CMT3LOG("L3: getMasterId\n");
+	CMT3LOG(__FUNCTION__ "\n");
 
 	if (m_serial.isOpen() || m_logFile.isOpen())
 		return m_config.m_masterDeviceId;
@@ -1015,9 +1042,9 @@ CmtDeviceId Cmt3::getMasterId(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Return the nr of connected MTs (excludes XMs)
-const uint16_t Cmt3::getMtCount(void) const
+uint16_t Cmt3::getMtCount(void) const
 {
-	CMT3LOGDAT("L3: getMtCount\n");
+	CMT3LOGDAT(__FUNCTION__ "\n");
 
 	if (m_serial.isOpen() || m_logFile.isOpen())
 		return m_config.m_numberOfDevices;
@@ -1028,7 +1055,7 @@ const uint16_t Cmt3::getMtCount(void) const
 // Retrieve the CmtDeviceId of the MT device with the given index
 XsensResultValue Cmt3::getMtDeviceId (const uint8_t index, CmtDeviceId& deviceId) const
 {
-	CMT3LOG("L3: getMtDeviceId %u\n",(uint32_t) index);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) index);
 	CMT3EXITLOG;
 
 	if (index >= m_config.m_numberOfDevices)
@@ -1039,7 +1066,7 @@ XsensResultValue Cmt3::getMtDeviceId (const uint8_t index, CmtDeviceId& deviceId
 
 XsensResultValue Cmt3::getObjectAlignmentMatrix(CmtMatrix& matrix, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getObjectAlignmentMatrix %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQOBJECTALIGNMENT);
@@ -1059,7 +1086,7 @@ XsensResultValue Cmt3::getObjectAlignmentMatrix(CmtMatrix& matrix, const CmtDevi
 // Retrieve the port that the object is connected to.
 XsensResultValue Cmt3::getPortNr(uint16_t& port) const
 {
-	CMT3LOG("L3: getPortNr\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	return m_lastResult = m_serial.getPortNr(port);
@@ -1069,7 +1096,7 @@ XsensResultValue Cmt3::getPortNr(uint16_t& port) const
 // Retrieve the processing flags of a device.
 XsensResultValue Cmt3::getProcessingFlags(uint16_t& processingFlags, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getProcessingFlags %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQPROCESSINGFLAGS);
@@ -1081,7 +1108,7 @@ XsensResultValue Cmt3::getProcessingFlags(uint16_t& processingFlags, const CmtDe
 // Retrieve the product code of a device. The buffer should be at least 21 bytes.
 XsensResultValue Cmt3::getProductCode (char* productCode, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getProductCode %p %08x\n",productCode,deviceId);
+	CMT3LOG(__FUNCTION__ " %p %08x\n",productCode,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQPRODUCTCODE);
@@ -1097,7 +1124,7 @@ XsensResultValue Cmt3::getProductCode (char* productCode, const CmtDeviceId devi
 // Retrieve the sample frequency of the devices on the bus.
 uint16_t Cmt3::getSampleFrequency(void)
 {
-	CMT3LOG("L3: getSampleFrequency\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CmtDeviceMode2 mode;
 	mode.m_period = m_period;
 	mode.m_skip = m_skip;
@@ -1109,12 +1136,15 @@ uint16_t Cmt3::getSampleFrequency(void)
 // Get the baudrate that is reported for the serial connection
 XsensResultValue Cmt3::getSerialBaudrate(uint32_t& baudrate)
 {
-	CMT3LOG("L3: getSerialBaudrate\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST_BID(CMT_MID_REQBAUDRATE,CMT_BID_MASTER);
 	switch (rcv.getDataByte())
 	{
+	case CMT_BAUDCODE_4K8:
+		baudrate = CMT_BAUD_RATE_4800;
+		break;
 	case CMT_BAUDCODE_9K6:
 		baudrate = CMT_BAUD_RATE_9600;
 		break;
@@ -1145,6 +1175,7 @@ XsensResultValue Cmt3::getSerialBaudrate(uint32_t& baudrate)
 	case CMT_BAUDCODE_460K8:
 		baudrate = CMT_BAUD_RATE_460K8;
 		break;
+	case CMT_BAUDCODE_921K6_ALT:
 	case CMT_BAUDCODE_921K6:
 		baudrate = CMT_BAUD_RATE_921K6;
 		break;
@@ -1158,7 +1189,7 @@ XsensResultValue Cmt3::getSerialBaudrate(uint32_t& baudrate)
 // Retrieve the inbound synchronization settings of a device.
 XsensResultValue Cmt3::getSyncInSettings(CmtSyncInSettings& settings)
 {
-	CMT3LOG("L3: getSyncInSettings\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCINSETTINGS,1);
@@ -1195,7 +1226,7 @@ XsensResultValue Cmt3::getSyncInSettings(CmtSyncInSettings& settings)
 		m_logFile.writeMessage(&rcv);
 	HANDLE_ERR_RESULT;
 	settings.m_offset = rcv.getDataLong(1);
-	
+
 	// convert the offset to ns
 	settings.m_offset = (uint32_t) ((((double)settings.m_offset)*CMT_SYNC_CLOCK_TICKS_TO_NS)+0.5);
 
@@ -1206,7 +1237,7 @@ XsensResultValue Cmt3::getSyncInSettings(CmtSyncInSettings& settings)
 // Retrieve the inbound synchronization mode of a device.
 XsensResultValue Cmt3::getSyncInMode(uint16_t& mode)
 {
-	CMT3LOG("L3: getSyncInMode\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCINSETTINGS,1);
@@ -1231,7 +1262,7 @@ XsensResultValue Cmt3::getSyncInMode(uint16_t& mode)
 // Retrieve the inbound synchronization skip factor of a device.
 XsensResultValue Cmt3::getSyncInSkipFactor(uint16_t& skipFactor)
 {
-	CMT3LOG("L3: getSyncInSkipFactor\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCINSETTINGS,1);
@@ -1256,7 +1287,7 @@ XsensResultValue Cmt3::getSyncInSkipFactor(uint16_t& skipFactor)
 // Retrieve the inbound synchronization offset of a device.
 XsensResultValue Cmt3::getSyncInOffset(uint32_t& offset)
 {
-	CMT3LOG("L3: getSyncInOffset\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCINSETTINGS,1);
@@ -1284,7 +1315,7 @@ XsensResultValue Cmt3::getSyncInOffset(uint32_t& offset)
 // Get the synchronization mode of the XM
 XsensResultValue Cmt3::getSyncMode(uint8_t& mode)
 {
-	CMT3LOG("L3: getSyncMode\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST_BID(CMT_MID_REQSYNCMODE,CMT_BID_MASTER);
@@ -1296,7 +1327,7 @@ XsensResultValue Cmt3::getSyncMode(uint8_t& mode)
 // Retrieve the outbound synchronization settings of a device.
 XsensResultValue Cmt3::getSyncOutSettings(CmtSyncOutSettings& settings)
 {
-	CMT3LOG("L3: getSyncOutSettings\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCOUTSETTINGS,1);
@@ -1333,7 +1364,7 @@ XsensResultValue Cmt3::getSyncOutSettings(CmtSyncOutSettings& settings)
 		m_logFile.writeMessage(&rcv);
 	HANDLE_ERR_RESULT;
 	settings.m_offset = rcv.getDataLong(1);
-	
+
 	snd.setDataByte(CMT_PARAM_SYNCOUT_PULSEWIDTH);
 	m_serial.writeMessage(&snd);
 	m_lastResult = m_serial.waitForMessage(&rcv,CMT_MID_REQSYNCOUTSETTINGSACK,0,true);
@@ -1355,7 +1386,7 @@ XsensResultValue Cmt3::getSyncOutSettings(CmtSyncOutSettings& settings)
 // Retrieve the outbound synchronization mode of a device.
 XsensResultValue Cmt3::getSyncOutMode(uint16_t& mode)
 {
-	CMT3LOG("L3: getSyncOutMode\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCOUTSETTINGS,1);
@@ -1380,7 +1411,7 @@ XsensResultValue Cmt3::getSyncOutMode(uint16_t& mode)
 // Retrieve the outbound synchronization pulse width of a device.
 XsensResultValue Cmt3::getSyncOutPulseWidth(uint32_t& pulseWidth)
 {
-	CMT3LOG("L3: getSyncOutPulseWidth\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCOUTSETTINGS,1);
@@ -1408,7 +1439,7 @@ XsensResultValue Cmt3::getSyncOutPulseWidth(uint32_t& pulseWidth)
 // Retrieve the outbound synchronization skip factor of a device.
 XsensResultValue Cmt3::getSyncOutSkipFactor(uint16_t& skipFactor)
 {
-	CMT3LOG("L3: getSyncOutSkipFactor\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCOUTSETTINGS,1);
@@ -1433,7 +1464,7 @@ XsensResultValue Cmt3::getSyncOutSkipFactor(uint16_t& skipFactor)
 // Retrieve the outbound synchronization offset of a device.
 XsensResultValue Cmt3::getSyncOutOffset(uint32_t& offset)
 {
-	CMT3LOG("L3: getSyncOutOffset\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_REQSYNCOUTSETTINGS,1);
@@ -1473,12 +1504,12 @@ uint32_t Cmt3::getTimeoutMeasurement (void) const
 // Retrieve the transmission delay
 XsensResultValue Cmt3::getTransmissionDelay(uint16_t& delay, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getTransmissionDelay %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQTRANSMITDELAY);
 	delay = rcv.getDataShort();
-	
+
 	return m_lastResult = XRV_OK;
 }
 
@@ -1486,7 +1517,7 @@ XsensResultValue Cmt3::getTransmissionDelay(uint16_t& delay, const CmtDeviceId d
 // Retrieve the UTC time of the last received sample
 XsensResultValue Cmt3::getUtcTime(CmtUtcTime& utc, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getUtcTime %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQUTCTIME);
@@ -1510,7 +1541,7 @@ XsensResultValue Cmt3::getUtcTime(CmtUtcTime& utc, const CmtDeviceId deviceId)
 // Get the dual-mode output settings of the XM
 XsensResultValue Cmt3::getXmOutputMode(uint8_t& mode)
 {
-	CMT3LOG("L3: getXmOutputMode\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST_BID(CMT_MID_REQOPMODE,CMT_BID_MASTER);
@@ -1522,7 +1553,7 @@ XsensResultValue Cmt3::getXmOutputMode(uint8_t& mode)
 // Place all connected sensors into Configuration Mode.
 XsensResultValue Cmt3::gotoConfig(void)
 {
-	CMT3LOG("L3: gotoConfig port %u\n",(uint32_t)m_serial.getCmt1s()->getPortNr());
+	CMT3LOG(__FUNCTION__ " port %u\n",(uint32_t)m_serial.getCmt1s()->getPortNr());
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_GOTOCONFIG);
@@ -1536,7 +1567,7 @@ XsensResultValue Cmt3::gotoConfig(void)
 	while (tries++ < m_gotoConfigTries)
 	{
 		m_serial.getCmt1s()->flushData();			// special case for goto config. we want the buffer to be empty
-		CMT3LOG("L3: Attempt to goto config %d\n",tries);
+		CMT3LOG(__FUNCTION__ " Attempt to goto config %d\n",tries);
 		m_serial.writeMessage(&snd);
 		m_lastResult = m_serial.waitForMessage(&rcv,CMT_MID_GOTOCONFIGACK,0,false);
 #ifndef _PRODUCTION // Production version must retry on nodata, normal versions do not.
@@ -1556,11 +1587,11 @@ XsensResultValue Cmt3::gotoConfig(void)
 					getDeviceId(biddy,m_lastHwErrorDeviceId);
 				}
 				m_lastResult = m_lastHwError = (XsensResultValue) rcv.getDataByte(0);
-				CMT3LOG("L3: Goto config failed, error received %d: %s\n",(int32_t)m_lastResult,xsensResultText(m_lastResult));
+				CMT3LOG(__FUNCTION__ " Goto config failed, error received %d: %s\n",(int32_t)m_lastResult,xsensResultText(m_lastResult));
 				m_serial.setTimeout(m_timeoutConf);
 				return m_lastResult;
 			}
-			CMT3LOG("L3: Goto config succeeded\n");
+			CMT3LOG(__FUNCTION__ " Goto config succeeded\n");
 			m_measuring = false;
 			m_serial.setTimeout(m_timeoutConf);
 			return m_lastResult = XRV_OK;
@@ -1569,8 +1600,9 @@ XsensResultValue Cmt3::gotoConfig(void)
 		msleep(((long)rand() * 10)/RAND_MAX);
 	}
 	m_serial.setTimeout(m_timeoutConf);
+	m_serial.getCmt1s()->flushData(); // flush buffers once more to remove any errors that are still there.
 	m_measuring = (m_lastResult != XRV_OK);
-	CMT3LOG("L3: Goto config returns %d: %s\n",(int32_t)m_lastResult,xsensResultText(m_lastResult));
+	CMT3LOG(__FUNCTION__ " returns %d: %s\n",(int32_t)m_lastResult,xsensResultText(m_lastResult));
 	return m_lastResult;
 }
 
@@ -1578,7 +1610,7 @@ XsensResultValue Cmt3::gotoConfig(void)
 // Place all connected sensors into Measurement Mode.
 XsensResultValue Cmt3::gotoMeasurement(void)
 {
-	CMT3LOG("L3: gotoMeasurement port %u\n",(uint32_t)m_serial.getCmt1s()->getPortNr());
+	CMT3LOG(__FUNCTION__ " port %u\n",(uint32_t)m_serial.getCmt1s()->getPortNr());
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_GOTOMEASUREMENT);
@@ -1602,7 +1634,7 @@ XsensResultValue Cmt3::gotoMeasurement(void)
 
 XsensResultValue Cmt3::initBus(void)
 {
-	CMT3LOG("L3: initBus port %u\n",(uint32_t)m_serial.getCmt1s()->getPortNr());
+	CMT3LOG(__FUNCTION__ " port %u\n",(uint32_t)m_serial.getCmt1s()->getPortNr());
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST_BID(CMT_MID_INITBUS,CMT_BID_MASTER);
@@ -1613,77 +1645,83 @@ XsensResultValue Cmt3::initBus(void)
 // Return whether the main device is an Xbus Master or not.
 bool Cmt3::isXm(void) const
 {
-	return ((m_config.m_masterDeviceId & CMT_DID_TYPEH_MASK) == CMT_DID_TYPEH_XM); 
+	return ((m_config.m_masterDeviceId & CMT_DID_TYPEH_MASK) == CMT_DID_TYPEH_XM);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Open a communication channel to the given serial port name.
-XsensResultValue Cmt3::openPort(const char *portName, const uint32_t baudRate)
+XsensResultValue Cmt3::openPort(const char *portName, const uint32_t baudRate, uint32_t readBufSize, uint32_t writeBufSize)
 {
-	CMT3LOG("L3: openPort Opening port %s @baud %d, timeoutC=%u, timeoutM=%u\n", portName, baudRate, m_timeoutConf, m_timeoutMeas);
+	CMT3LOG(__FUNCTION__ " port %s @baud %d, timeoutC=%u, timeoutM=%u\n", portName, baudRate, m_timeoutConf, m_timeoutMeas);
 	CMT3EXITLOG;
-	
+
 	if (m_logFile.isOpen())
 		return m_lastResult = XRV_ALREADYOPEN;
-		
+
 	m_serial.setTimeout(m_timeoutConf);
-	if ((m_lastResult = m_serial.open(portName, baudRate)) != XRV_OK)
+	if ((m_lastResult = m_serial.open(portName, baudRate, readBufSize, writeBufSize)) != XRV_OK)
 		return m_lastResult;
-	
-	CMT3LOG("L3: openPort: Low level port opened, gotoConfig\n");
 
-    m_baudrate = baudRate;
-    m_rtcInitialized = false;
-    m_measuring = true;         // required for faster operation of refreshCache
-    m_logging = false;
+	m_readBufSize = readBufSize;
+	m_writeBufSize = writeBufSize;
 
-    // place the device in config mode
-    if (gotoConfig() != XRV_OK)
-    {
-        CMT3LOG("L3: openPort: gotoConfig failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
-        m_serial.close();
-        return XRV_CONFIGCHECKFAIL;
-    }
+	CMT3LOG(__FUNCTION__ " Low level port opened, gotoConfig\n");
 
-    CMT3LOG("L3: openPort: gotoConfig succeeded, requesting initBus\n");
-    Message snd,rcv;
+	m_baudrate = baudRate;
+	m_rtcInitialized = false;
+	m_measuring = true;         // required for faster operation of refreshCache
+	m_logging = false;
 
-    if (initBus() != XRV_OK)
-    {
-        CMT3LOG("L3: openPort: initBus failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
-        m_serial.close();
-        return XRV_CONFIGCHECKFAIL;
-    }
+	// place the device in config mode
+	if (gotoConfig() != XRV_OK)
+	{
+		CMT3LOG(__FUNCTION__ " gotoConfig failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
+		m_serial.close();
+		return XRV_CONFIGCHECKFAIL;
+	}
 
-    CMT3LOG("L3: openPort: initBus succeeded, cleaning up the cache\n");
-    if (refreshCache() != XRV_OK)
-    {
-        m_serial.close();
-        CMT3LOG("L3: openPort: refreshCache failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
-        return XRV_CONFIGCHECKFAIL;
-    }
+	CMT3LOG(__FUNCTION__ " gotoConfig succeeded, requesting initBus\n");
+	Message snd,rcv;
 
-    CMT3LOG("L3: openPort: returning OK\n");
-    return m_lastResult = XRV_OK;
+	if (initBus() != XRV_OK)
+	{
+		CMT3LOG(__FUNCTION__ " initBus failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
+		m_serial.close();
+		return XRV_CONFIGCHECKFAIL;
+	}
+
+	CMT3LOG(__FUNCTION__ " initBus succeeded, cleaning up the cache\n");
+	if (refreshCache() != XRV_OK)
+	{
+		m_serial.close();
+		CMT3LOG(__FUNCTION__ " refreshCache failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
+		return XRV_CONFIGCHECKFAIL;
+	}
+
+	CMT3LOG(__FUNCTION__ " returning OK\n");
+	return m_lastResult = XRV_OK;
 }
 
 #ifdef _WIN32
 //////////////////////////////////////////////////////////////////////////////////////////
 // Open a communication channel to the given COM port number.
-XsensResultValue Cmt3::openPort(const uint32_t portNumber, const uint32_t baudRate)
+XsensResultValue Cmt3::openPort(const uint32_t portNumber, const uint32_t baudRate, uint32_t readBufSize, uint32_t writeBufSize)
 {
 	// open the port
-	CMT3LOG("L3: openPort Opening port %d @baud %d, timeoutC=%u, timeoutM=%u\n",(int32_t)portNumber,baudRate,m_timeoutConf, m_timeoutMeas);
+	CMT3LOG(__FUNCTION__ " port %d @baud %d, timeoutC=%u, timeoutM=%u\n",(int32_t)portNumber,baudRate,m_timeoutConf, m_timeoutMeas);
 	CMT3EXITLOG;
 
 	if (m_logFile.isOpen())
 		return m_lastResult = XRV_ALREADYOPEN;
 
 	m_serial.setTimeout(m_timeoutConf);	// then update L2 (and L1)
-	if ((m_lastResult = m_serial.open(portNumber, baudRate)) != XRV_OK)
+	if ((m_lastResult = m_serial.open(portNumber, baudRate, readBufSize, writeBufSize)) != XRV_OK)
 		return m_lastResult;
 
-	CMT3LOG("L3: openPort: Low level port opened, gotoConfig\n");
+	m_readBufSize = readBufSize;
+	m_writeBufSize = writeBufSize;
+
+	CMT3LOG(__FUNCTION__ " Low level port opened, gotoConfig\n");
 
 	m_baudrate = baudRate;
 	m_rtcInitialized = false;
@@ -1693,30 +1731,38 @@ XsensResultValue Cmt3::openPort(const uint32_t portNumber, const uint32_t baudRa
 	// place the device in config mode
 	if (gotoConfig() != XRV_OK)
 	{
-		CMT3LOG("L3: openPort: gotoConfig failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
+		CMT3LOG(__FUNCTION__ " gotoConfig failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
 		m_serial.close();
 		return XRV_CONFIGCHECKFAIL;
 	}
 
-	CMT3LOG("L3: openPort: gotoConfig succeeded, requesting initBus\n");
+	CMT3LOG(__FUNCTION__ " gotoConfig succeeded, requesting initBus\n");
 	Message snd,rcv;
 
-	if (initBus() != XRV_OK)
+	while (initBus() != XRV_OK)
 	{
-		CMT3LOG("L3: openPort: initBus failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
+		if (m_lastResult == XRV_NOBUS)
+		{
+			// attempt a bus power up and try again
+			setBusPowerState(true);
+			if (initBus() == XRV_OK)
+				break;
+		}
+
+		CMT3LOG(__FUNCTION__ " initBus failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
 		m_serial.close();
 		return XRV_CONFIGCHECKFAIL;
 	}
 
-	CMT3LOG("L3: openPort: initBus succeeded, cleaning up the cache\n");
+	CMT3LOG(__FUNCTION__ " initBus succeeded, cleaning up the cache\n");
 	if (refreshCache() != XRV_OK)
 	{
 		m_serial.close();
-		CMT3LOG("L3: openPort: refreshCache failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
+		CMT3LOG(__FUNCTION__ " refreshCache failed: [%d]%s\n",m_lastResult,xsensResultText(m_lastResult));
 		return XRV_CONFIGCHECKFAIL;
 	}
 
-	CMT3LOG("L3: openPort: returning OK\n");
+	CMT3LOG(__FUNCTION__ " returning OK\n");
 	return m_lastResult = XRV_OK;
 }
 #endif
@@ -1725,7 +1771,7 @@ XsensResultValue Cmt3::openPort(const uint32_t portNumber, const uint32_t baudRa
 // Get the MessageId of the next logged message
 XsensResultValue Cmt3::peekLogMessageId(uint8_t& messageId)
 {
-	CMT3LOG("L3: peekLogMessageId started\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	if (!m_readFromFile)
@@ -1733,17 +1779,17 @@ XsensResultValue Cmt3::peekLogMessageId(uint8_t& messageId)
 
 	Message msg;
 
-	CmtFilePos pos =  m_logFile.getReadPosition();
+	XsensFilePos pos =  m_logFile.getReadPosition();
 	m_lastResult = m_logFile.readMessage(&msg);
 	m_logFile.setReadPosition(pos);
 
 	if (m_lastResult != XRV_OK)
 	{
-		CMT3LOG("L3: peekLogMessageId, no messages to be read\n");
+		CMT3LOG(__FUNCTION__ " no messages to be read\n");
 		return m_lastResult;
 	}
 	messageId = msg.getMessageId();
-	CMT3LOG("L3: peekLogMessageId found msg with ID %02x\n",(int32_t) messageId);
+	CMT3LOG(__FUNCTION__ " found msg with ID %02x\n",(int32_t) messageId);
 	return m_lastResult = XRV_OK;
 }
 
@@ -1751,7 +1797,7 @@ XsensResultValue Cmt3::peekLogMessageId(uint8_t& messageId)
 // Retrieve a data message.
 XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 {
-	CMT3LOGDAT("L3: readDataPacket %p %u\n",pack,acceptOther?1:0);
+	CMT3LOGDAT(__FUNCTION__ " %p %u\n",pack,acceptOther?1:0);
 	CMT3EXITLOGDAT;
 
 	if (!m_readFromFile)
@@ -1761,7 +1807,7 @@ XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 			m_lastResult = m_serial.readMessage(&pack->m_msg);
 			if (m_lastResult != XRV_OK)
 			{
-				CMT3LOGDAT("L3: readDataPacket, no data messages to be read\n");
+				CMT3LOGDAT(__FUNCTION__ " no data messages to be read (s)\n");
 				return m_lastResult;
 			}
 			if (m_logging)
@@ -1775,7 +1821,7 @@ XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 				pack->m_toa = timeStampNow();
 				if (m_useRtc)
 					fillRtc(pack);
-				CMT3LOGDAT("L3: readDataPacket, data message read\n");
+				CMT3LOGDAT(__FUNCTION__ " data message read (s)\n");
 				return m_lastResult = XRV_OK;
 			}
 			else if (pack->m_msg.getMessageId() == CMT_MID_ERROR)
@@ -1788,10 +1834,10 @@ XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 				}
 				return m_lastResult = m_lastHwError = (XsensResultValue) pack->m_msg.getDataByte(0);
 			}
-			CMT3LOGDAT("L3: readDataPacket, non-data message read: %2x\n",(int32_t) pack->m_msg.getMessageId());
+			CMT3LOGDAT(__FUNCTION__ " non-data message read (s): %2x\n",(int32_t) pack->m_msg.getMessageId());
 			if (acceptOther)
 			{
-				CMT3LOGDAT("L3: accepting other message\n");
+				CMT3LOGDAT(__FUNCTION__ " accepting other message (s)\n");
 				return m_lastResult = XRV_OTHER;
 			}
 		}
@@ -1803,7 +1849,7 @@ XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 			m_lastResult = m_logFile.readMessage(&pack->m_msg);
 			if (m_lastResult != XRV_OK)
 			{
-				CMT3LOGDAT("L3: readDataPacket, no data messages to be read\n");
+				CMT3LOGDAT(__FUNCTION__ " no data messages to be read (f)\n");
 				return m_lastResult;
 			}
 			if (pack->m_msg.getMessageId() == CMT_MID_MTDATA)
@@ -1815,7 +1861,7 @@ XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 				pack->m_toa = timeStampNow();
 				if (m_useRtc)
 					fillRtc(pack);
-				CMT3LOGDAT("L3: readDataPacket, data message read\n");
+				CMT3LOGDAT(__FUNCTION__ " data message read (f)\n");
 				return m_lastResult = XRV_OK;
 			}
 			else if (pack->m_msg.getMessageId() == CMT_MID_ERROR)
@@ -1828,10 +1874,10 @@ XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 				}
 				return m_lastResult = m_lastHwError = (XsensResultValue) pack->m_msg.getDataByte(0);
 			}
-			CMT3LOGDAT("L3: readDataPacket, non-data message read: %2x\n",(int32_t) pack->m_msg.getMessageId());
+			CMT3LOGDAT(__FUNCTION__ " non-data message read (f): %2x\n",(int32_t) pack->m_msg.getMessageId());
 			if (acceptOther)
 			{
-				CMT3LOGDAT("L3: accepting other message\n");
+				CMT3LOGDAT(__FUNCTION__ " accepting other message (f)\n");
 				return m_lastResult = XRV_OTHER;
 			}
 		}
@@ -1842,7 +1888,7 @@ XsensResultValue Cmt3::readDataPacket(Packet* pack, bool acceptOther)
 // Request a data message and wait for it to arrive.
 XsensResultValue Cmt3::requestData(Packet* pack, const uint8_t *data, const uint16_t count)
 {
-	CMT3LOGDAT("L3: requestData %p\n",pack);
+	CMT3LOGDAT(__FUNCTION__ " %p\n",pack);
 	CMT3EXITLOGDAT;
 
 	if (isXm())
@@ -1876,20 +1922,23 @@ XsensResultValue Cmt3::requestData(Packet* pack, const uint8_t *data, const uint
 // Reset all connected sensors.
 XsensResultValue Cmt3::reset(void)
 {
-	CMT3LOG("L3: reset\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	Message snd(CMT_MID_RESET,0);
 	Message rcv;
 	snd.setBusId(CMT_BID_MASTER);
 	m_serial.writeMessage(&snd);
-	m_lastResult = m_serial.waitForMessage(&rcv,CMT_MID_RESETACK,0,false);
+	m_lastResult = m_serial.waitForMessage(&rcv,CMT_MID_RESETACK,100,false);
 	if (m_lastResult != XRV_OK)
 		return m_lastResult;
 	if (m_logging)
 		m_logFile.writeMessage(&rcv);
+	bool wasMeasuring = m_measuring;
 	m_measuring = true;
 	refreshCache();
+	if (wasMeasuring)
+		gotoMeasurement();
 	return m_lastResult = XRV_OK;
 }
 
@@ -1897,7 +1946,7 @@ XsensResultValue Cmt3::reset(void)
 //! Perform an orientation reset on a device.
 XsensResultValue Cmt3::resetOrientation(const CmtResetMethod method, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: resetOrientation %u %08x\n",(uint32_t) method,deviceId);
+	CMT3LOG(__FUNCTION__ " %u %08x\n",(uint32_t) method,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_SET(CMT_MID_RESETORIENTATION,CMT_LEN_RESETORIENTATION,Short,(uint16_t) method);
@@ -1905,11 +1954,29 @@ XsensResultValue Cmt3::resetOrientation(const CmtResetMethod method, const CmtDe
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+//! Initiates the MT's selftest procudure
+XsensResultValue Cmt3::runSelfTest(uint16_t &result, const CmtDeviceId deviceId)
+{
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
+	CMT3EXITLOG;
+
+	result = 0;
+
+	uint32_t timeout = m_serial.getTimeout();
+	m_serial.setTimeout(3000);
+	DO_DATA_REQUEST(CMT_MID_RUNSELFTEST);
+	m_serial.setTimeout(timeout);
+
+	result = rcv.getDataShort();
+
+	return m_lastResult = XRV_OK;
+}
+//////////////////////////////////////////////////////////////////////////////////////////
 //! Initiates the XKF3 'no rotation' update procedure.
 XsensResultValue Cmt3::setNoRotation(const uint16_t duration, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setNoRotation %u %08x\n",(uint32_t) duration,deviceId);
-	CMT3EXITLOG;	
+	CMT3LOG(__FUNCTION__ " %u %08x\n",(uint32_t) duration,deviceId);
+	CMT3EXITLOG;
 
 	DO_DATA_SET(CMT_MID_SETNOROTATION,CMT_LEN_SETNOROTATION,Short,(uint16_t) duration);
 	return m_lastResult = XRV_OK;
@@ -1919,7 +1986,7 @@ XsensResultValue Cmt3::setNoRotation(const uint16_t duration, const CmtDeviceId 
 //! Restore the factory defaults of a device.
 XsensResultValue Cmt3::restoreFactoryDefaults(const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: restoreFactoryDefaults %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_RESTOREFACTORYDEF);
@@ -1932,7 +1999,7 @@ obsolete:
 // Set the state (enabled/disabled) of the AMD algorithm
 XsensResultValue Cmt3::setAmdState (const bool state, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setAmdState %u %08x\n",state?1:0,deviceId);
+	CMT3LOG(__FUNCTION__ " %u %08x\n",state?1:0,deviceId);
 	CMT3EXITLOG;
 
 	uint16_t dat = ((state)?1:0);
@@ -1945,12 +2012,15 @@ XsensResultValue Cmt3::setAmdState (const bool state, const CmtDeviceId deviceId
 // Set the baudrate and reconnect at the new baudrate if successful.
 XsensResultValue Cmt3::setBaudrate(const uint32_t baudrate, bool reconnect)
 {
-	CMT3LOG("L3: setBaudrate %u %u\n",baudrate,reconnect?1:0);
+	CMT3LOG(__FUNCTION__ " %u %u\n",baudrate,reconnect?1:0);
 	CMT3EXITLOG;
 
 	uint8_t tmp;
 	switch (baudrate)
 	{
+	case CMT_BAUD_RATE_4800:
+		tmp = CMT_BAUDCODE_4K8;
+		break;
 	case CMT_BAUD_RATE_9600:
 		tmp = CMT_BAUDCODE_9K6;
 		break;
@@ -1993,7 +2063,7 @@ XsensResultValue Cmt3::setBaudrate(const uint32_t baudrate, bool reconnect)
 
 		if (reconnect)
 		{
-			CMT3LOG("L3: sending reset for reconnect\n");
+			CMT3LOG(__FUNCTION__ " sending reset for reconnect\n");
 			// Reset devices on this port and reopen port @ new baudrate
 			Message sndReset(CMT_MID_RESET,0);
 			Message rcvReset;
@@ -2011,17 +2081,17 @@ XsensResultValue Cmt3::setBaudrate(const uint32_t baudrate, bool reconnect)
 			if (isXm())
 				msleep(750);
 
-			CMT3LOG("L3: reopening port at new baud rate\n");
+			CMT3LOG(__FUNCTION__ " reopening port at new baud rate\n");
 #ifdef _WIN32
 			int32_t port;
 			m_serial.getPortNr(port);
 			closePort(false);
-			m_lastResult = openPort(port,baudrate);
+			m_lastResult = openPort(port, baudrate, m_readBufSize, m_writeBufSize);
 #else
 			char portname[32];
 			m_serial.getPortName(portname);
 			closePort(false);
-			m_lastResult = openPort(portname, baudrate);
+			m_lastResult = openPort(portname, baudrate, m_readBufSize, m_writeBufSize);
 #endif
 			if (m_lastResult != XRV_OK)
 				return m_lastResult;
@@ -2038,7 +2108,7 @@ XsensResultValue Cmt3::setBaudrate(const uint32_t baudrate, bool reconnect)
 // Set the state of the bluetooth communication to on (true) or off (false)
 XsensResultValue Cmt3::setBluetoothState(const bool enabled)
 {
-	CMT3LOG("L3: setBluetoothState %u\n",enabled?1:0);
+	CMT3LOG(__FUNCTION__ " %u\n",enabled?1:0);
 	CMT3EXITLOG;
 
 	uint8_t dat = (enabled?0:1);
@@ -2050,7 +2120,7 @@ XsensResultValue Cmt3::setBluetoothState(const bool enabled)
 // Switch the XM bus power on or off.
 XsensResultValue Cmt3::setBusPowerState(const bool enabled)
 {
-	CMT3LOG("L3: setBusPowerState %u\n",enabled?1:0);
+	CMT3LOG(__FUNCTION__ " %u\n",enabled?1:0);
 	CMT3EXITLOG;
 
 	uint16_t tmp = enabled?1:0;
@@ -2062,7 +2132,7 @@ XsensResultValue Cmt3::setBusPowerState(const bool enabled)
 // Set the complete device output mode of a device.
 XsensResultValue Cmt3::setDeviceMode (const CmtDeviceMode& mode, bool force, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setDeviceMode %04x %08x %u %u %08x\n",(uint32_t) mode.m_outputMode,(uint32_t) mode.m_outputSettings,(uint32_t) mode.m_sampleFrequency,force?1:0,deviceId);
+	CMT3LOG(__FUNCTION__ " %04x %08x %u %u %08x\n",(uint32_t) mode.m_outputMode,(uint32_t) mode.m_outputSettings,(uint32_t) mode.m_sampleFrequency,force?1:0,deviceId);
 	CMT3EXITLOG;
 
 	CmtDeviceMode2 mode2;
@@ -2074,10 +2144,10 @@ XsensResultValue Cmt3::setDeviceMode (const CmtDeviceMode& mode, bool force, con
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// Set the complete device output mode of a device.
+// Set the outputMode, outputSettings, period and outputSkipFactor of a device.
 XsensResultValue Cmt3::setDeviceMode2 (const CmtDeviceMode2& mode, bool force, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setDeviceMode2 %04x %08x %u %u %u %08x\n",(uint32_t) mode.m_outputMode,(uint32_t) mode.m_outputSettings,(uint32_t) mode.m_period, (uint32_t)mode.m_skip,force?1:0,deviceId);
+	CMT3LOG(__FUNCTION__ " %04x %08x %u %u %u %08x\n",(uint32_t) mode.m_outputMode,(uint32_t) mode.m_outputSettings,(uint32_t) mode.m_period, (uint32_t)mode.m_skip,force?1:0,deviceId);
 	CMT3EXITLOG;
 
 	Message snd;
@@ -2085,7 +2155,7 @@ XsensResultValue Cmt3::setDeviceMode2 (const CmtDeviceMode2& mode, bool force, c
 	uint8_t bid = getBusIdInternal(deviceId);
 	if (bid == CMT_BID_INVALID)
 		return (m_lastResult = XRV_INVALIDID);
-	
+
 	//uint16_t period, skip;
 	//mode.getPeriodAndSkipFactor(period, skip);
 	uint16_t xperiod;
@@ -2118,7 +2188,7 @@ XsensResultValue Cmt3::setDeviceMode2 (const CmtDeviceMode2& mode, bool force, c
 
 		if (force || m_config.m_samplingPeriod != xperiod)
 		{
-			CMT3LOG("L3: setDeviceMode setting device %08x period to %u\n",deviceId,(uint32_t) xperiod);
+			CMT3LOG(__FUNCTION__ " setting device %08x period to %u\n",deviceId,(uint32_t) xperiod);
 			//changed = true;
 			snd.setDataShort(xperiod);
 			snd.setMessageId(CMT_MID_REQPERIOD);
@@ -2134,7 +2204,7 @@ XsensResultValue Cmt3::setDeviceMode2 (const CmtDeviceMode2& mode, bool force, c
 
 		if (!xm && (force || m_config.m_outputSkipFactor != mode.m_skip))
 		{
-			CMT3LOG("L3: setDeviceMode setting MT %08x skip factor to %u\n",deviceId,(uint32_t) mode.m_skip);
+			CMT3LOG(__FUNCTION__ " setting MT %08x skip factor to %u\n",deviceId,(uint32_t) mode.m_skip);
 			//changed = true;
 			snd.setDataShort(mode.m_skip);
 			snd.setMessageId(CMT_MID_REQOUTPUTSKIPFACTOR);
@@ -2158,10 +2228,10 @@ XsensResultValue Cmt3::setDeviceMode2 (const CmtDeviceMode2& mode, bool force, c
 		}
 		else
 			snd.setBusId(bid);
-	
+
 		if (force || m_config.m_deviceInfo[bid-1].m_outputMode != (uint16_t) mode.m_outputMode)
 		{
-			CMT3LOG("L3: setDeviceMode setting MT %08x output mode to %04X\n",deviceId,(uint32_t) mode.m_outputMode);
+			CMT3LOG(__FUNCTION__ " setting MT %08x output mode to %04X\n",deviceId,(uint32_t) mode.m_outputMode);
 			//changed = true;
 			snd.resizeData(2);
 			snd.setMessageId(CMT_MID_REQOUTPUTMODE);
@@ -2182,7 +2252,7 @@ XsensResultValue Cmt3::setDeviceMode2 (const CmtDeviceMode2& mode, bool force, c
 
 		if (force || m_config.m_deviceInfo[bid-1].m_outputSettings != settings)
 		{
-			CMT3LOG("L3: setDeviceMode setting MT %08x output settings to %08X\n",deviceId,(uint32_t) settings);
+			CMT3LOG(__FUNCTION__ " setting MT %08x output settings to %08X\n",deviceId,(uint32_t) settings);
 			//changed = true;
 			snd.setMessageId(CMT_MID_REQOUTPUTSETTINGS);
 			snd.setDataLong(settings);
@@ -2204,7 +2274,7 @@ XsensResultValue Cmt3::setDeviceMode2 (const CmtDeviceMode2& mode, bool force, c
 // Retrieve the error mode
 XsensResultValue Cmt3::setErrorMode(const uint16_t mode)
 {
-	CMT3LOG("L3: setErrorMode %u\n",(uint32_t) mode);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) mode);
 	CMT3EXITLOG;
 
 	uint8_t mid;
@@ -2221,7 +2291,7 @@ XsensResultValue Cmt3::setErrorMode(const uint16_t mode)
 // Set the number of times the gotoConfig function will attempt gotoConfig before failing
 XsensResultValue Cmt3::setGotoConfigTries(const uint16_t tries)
 {
-	CMT3LOG("L3: setGotoConfigTries %u\n",(uint32_t) tries);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) tries);
 	CMT3EXITLOG;
 
 	m_gotoConfigTries = tries;
@@ -2232,7 +2302,7 @@ XsensResultValue Cmt3::setGotoConfigTries(const uint16_t tries)
 // Set the heading offset of a device. The valid range is -pi to +pi.
 XsensResultValue Cmt3::setHeading (const double heading, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setHeading %f %08x\n",heading,deviceId);
+	CMT3LOG(__FUNCTION__ " %f %08x\n",heading,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_SET(CMT_MID_REQHEADING,CMT_LEN_HEADING,Float,(float) heading);
@@ -2243,7 +2313,7 @@ XsensResultValue Cmt3::setHeading (const double heading, const CmtDeviceId devic
 // Sets the current position of the sensor
 XsensResultValue Cmt3::setLatLonAlt(const CmtVector& lla, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setLatLonAlt [%f %f %f] %08x\n",lla.m_data[0],lla.m_data[1],lla.m_data[2],deviceId);
+	CMT3LOG(__FUNCTION__ " [%f %f %f] %08x\n",lla.m_data[0],lla.m_data[1],lla.m_data[2],deviceId);
 	CMT3EXITLOG;
 
 	uint8_t bid = getBusIdInternal(deviceId);
@@ -2280,7 +2350,7 @@ XsensResultValue Cmt3::setLatLonAlt(const CmtVector& lla, const CmtDeviceId devi
 // Set the location ID of a device. The buffer should be no more than 20 bytes.
 XsensResultValue Cmt3::setLocationId (uint16_t locationId, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setLocationId %u %08x\n",(uint32_t) locationId,deviceId);
+	CMT3LOG(__FUNCTION__ " %u %08x\n",(uint32_t) locationId,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_SET(CMT_MID_REQLOCATIONID,CMT_LEN_LOCATIONID,Short,locationId);
@@ -2291,7 +2361,7 @@ XsensResultValue Cmt3::setLocationId (uint16_t locationId, const CmtDeviceId dev
 // Set the magnetic declination offset of a device. The valid range is -pi to +pi.
 XsensResultValue Cmt3::setMagneticDeclination(const double declination, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setMagneticDeclination %f %08x\n",declination,deviceId);
+	CMT3LOG(__FUNCTION__ " %f %08x\n",declination,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_SET(CMT_MID_SETMAGNETICDECLINATION,CMT_LEN_MAGNETICDECLINATION,Float,(float) declination);
@@ -2300,7 +2370,7 @@ XsensResultValue Cmt3::setMagneticDeclination(const double declination, const Cm
 
 XsensResultValue Cmt3::setObjectAlignmentMatrix(const CmtMatrix& matrix, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setObjectAlignmentMatrix ][%f %f %f][%f %f %f][%f %f %f]] %08x\n",
+	CMT3LOG(__FUNCTION__ " [[%f %f %f][%f %f %f][%f %f %f]] %08x\n",
 		matrix.m_data[0][0],matrix.m_data[0][1],matrix.m_data[0][2],
 		matrix.m_data[1][0],matrix.m_data[1][1],matrix.m_data[1][2],
 		matrix.m_data[2][0],matrix.m_data[2][1],matrix.m_data[2][2],deviceId);
@@ -2346,7 +2416,7 @@ XsensResultValue Cmt3::setObjectAlignmentMatrix(const CmtMatrix& matrix, const C
 // Set the processing flags of a device.
 XsensResultValue Cmt3::setProcessingFlags (uint16_t processingFlags, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setProcessingFlags %u %08x\n",(uint32_t) processingFlags,deviceId);
+	CMT3LOG(__FUNCTION__ " %u %08x\n",(uint32_t) processingFlags,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_SET(CMT_MID_REQPROCESSINGFLAGS,CMT_LEN_PROCESSINGFLAGS,Short,processingFlags);
@@ -2357,7 +2427,7 @@ XsensResultValue Cmt3::setProcessingFlags (uint16_t processingFlags, const CmtDe
 // Switch the XM off
 XsensResultValue Cmt3::setXmPowerOff(void)
 {
-	CMT3LOG("L3: setXmPowerOff\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	if (!isXm())
@@ -2371,7 +2441,7 @@ XsensResultValue Cmt3::setXmPowerOff(void)
 // Set the inbound synchronization settings of a device.
 XsensResultValue Cmt3::setSyncInSettings (const CmtSyncInSettings& settings)
 {
-	CMT3LOG("L3: setSyncInSettings %u %u %u\n",(uint32_t) settings.m_mode,settings.m_offset,(uint32_t) settings.m_skipFactor);
+	CMT3LOG(__FUNCTION__ " %u %u %u\n",(uint32_t) settings.m_mode,settings.m_offset,(uint32_t) settings.m_skipFactor);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2421,7 +2491,7 @@ XsensResultValue Cmt3::setSyncInSettings (const CmtSyncInSettings& settings)
 // Set the inbound synchronization mode of a device.
 XsensResultValue Cmt3::setSyncInMode (const uint16_t mode)
 {
-	CMT3LOG("L3: setSyncInMode %u\n",(uint32_t) mode);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) mode);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2449,7 +2519,7 @@ XsensResultValue Cmt3::setSyncInMode (const uint16_t mode)
 // Set the inbound synchronization skip factor of a device.
 XsensResultValue Cmt3::setSyncInSkipFactor (const uint16_t skipFactor)
 {
-	CMT3LOG("L3: setSyncInSettings %u\n",skipFactor);
+	CMT3LOG(__FUNCTION__ " %u\n",skipFactor);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2477,7 +2547,7 @@ XsensResultValue Cmt3::setSyncInSkipFactor (const uint16_t skipFactor)
 // Set the inbound synchronization offset of a device.
 XsensResultValue Cmt3::setSyncInOffset (const uint32_t offset)
 {
-	CMT3LOG("L3: setSyncInSettings %u\n",offset);
+	CMT3LOG(__FUNCTION__ " %u\n",offset);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2508,7 +2578,7 @@ XsensResultValue Cmt3::setSyncInOffset (const uint32_t offset)
 // Set the synchronization mode of the XM
 XsensResultValue Cmt3::setSyncMode(const uint8_t mode)
 {
-	CMT3LOG("L3: setSyncMode %u\n",(uint32_t) mode);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) mode);
 	CMT3EXITLOG;
 
 	if (!isXm())
@@ -2522,7 +2592,7 @@ XsensResultValue Cmt3::setSyncMode(const uint8_t mode)
 // Set the outbound synchronization settings of a device.
 XsensResultValue Cmt3::setSyncOutSettings (const CmtSyncOutSettings& settings)
 {
-	CMT3LOG("L3: setSyncOutSettings %u %u %u %u\n",(uint32_t) settings.m_mode, settings.m_offset, (uint32_t) settings.m_pulseWidth, (uint32_t) settings.m_skipFactor);
+	CMT3LOG(__FUNCTION__ " %u %u %u %u\n",(uint32_t) settings.m_mode, settings.m_offset, (uint32_t) settings.m_pulseWidth, (uint32_t) settings.m_skipFactor);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2563,7 +2633,7 @@ XsensResultValue Cmt3::setSyncOutSettings (const CmtSyncOutSettings& settings)
 	if (m_logging)
 		m_logFile.writeMessage(&rcv);
 	HANDLE_ERR_RESULT;
-	
+
 	snd.setDataByte(CMT_PARAM_SYNCOUT_PULSEWIDTH);
 	snd.setDataLong((uint32_t) (((double) settings.m_pulseWidth)
 								* CMT_SYNC_CLOCK_NS_TO_TICKS + 0.5),1);
@@ -2582,7 +2652,7 @@ XsensResultValue Cmt3::setSyncOutSettings (const CmtSyncOutSettings& settings)
 // Set the outbound synchronization mode of a device.
 XsensResultValue Cmt3::setSyncOutMode (const uint16_t mode)
 {
-	CMT3LOG("L3: setSyncOutSettings %u\n",(uint32_t) mode);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) mode);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2610,7 +2680,7 @@ XsensResultValue Cmt3::setSyncOutMode (const uint16_t mode)
 // Set the outbound synchronization pulse width of a device.
 XsensResultValue Cmt3::setSyncOutPulseWidth(const uint32_t pulseWidth)
 {
-	CMT3LOG("L3: setSyncOutSettings %u\n",pulseWidth);
+	CMT3LOG(__FUNCTION__ " %u\n",pulseWidth);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2639,7 +2709,7 @@ XsensResultValue Cmt3::setSyncOutPulseWidth(const uint32_t pulseWidth)
 // Set the outbound synchronization skip factor of a device.
 XsensResultValue Cmt3::setSyncOutSkipFactor(const uint16_t skipFactor)
 {
-	CMT3LOG("L3: setSyncOutSettings %u\n",skipFactor);
+	CMT3LOG(__FUNCTION__ " %u\n",skipFactor);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2667,7 +2737,7 @@ XsensResultValue Cmt3::setSyncOutSkipFactor(const uint16_t skipFactor)
 // Set the outbound synchronization offset of a device.
 XsensResultValue Cmt3::setSyncOutOffset(const uint32_t offset)
 {
-	CMT3LOG("L3: setSyncOutSettings %u\n", offset);
+	CMT3LOG(__FUNCTION__ " %u\n", offset);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2696,7 +2766,7 @@ XsensResultValue Cmt3::setSyncOutOffset(const uint32_t offset)
 // Set the configuration mode timeout value in ms.
 XsensResultValue Cmt3::setTimeoutConfig(const uint32_t timeout)
 {
-	CMT3LOG("L3: setTimeoutConfig %u\n",timeout);
+	CMT3LOG(__FUNCTION__ " %u\n",timeout);
 	CMT3EXITLOG;
 
 	m_timeoutConf = timeout;
@@ -2709,7 +2779,7 @@ XsensResultValue Cmt3::setTimeoutConfig(const uint32_t timeout)
 // Set the measurement mode timeout value in ms.
 XsensResultValue Cmt3::setTimeoutMeasurement(const uint32_t timeout)
 {
-	CMT3LOG("L3: setTimeoutMeasurement %u\n",timeout);
+	CMT3LOG(__FUNCTION__ " %u\n",timeout);
 	CMT3EXITLOG;
 
 	m_timeoutMeas = timeout;
@@ -2722,7 +2792,7 @@ XsensResultValue Cmt3::setTimeoutMeasurement(const uint32_t timeout)
 // Retrieve the transmission delay
 XsensResultValue Cmt3::setTransmissionDelay(const uint16_t delay)
 {
-	CMT3LOG("L3: setTransmissionDelay %u\n",(uint32_t) delay);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) delay);
 	CMT3EXITLOG;
 
 	if (isXm())
@@ -2736,7 +2806,7 @@ XsensResultValue Cmt3::setTransmissionDelay(const uint16_t delay)
 // Set the dual-mode output settings of the XM
 XsensResultValue Cmt3::setXmOutputMode(const uint8_t mode)
 {
-	CMT3LOG("L3: setXmOutputMode %u\n",(uint32_t) mode);
+	CMT3LOG(__FUNCTION__ " %u\n",(uint32_t) mode);
 	CMT3EXITLOG;
 
 	if (!isXm())
@@ -2749,7 +2819,7 @@ XsensResultValue Cmt3::setXmOutputMode(const uint8_t mode)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::refreshCache(const bool file)
 {
-	CMT3LOG("L3: refreshCache %d\n",file?1:0);
+	CMT3LOG(__FUNCTION__ " %d\n",file?1:0);
 	CMT3EXITLOG;
 
 	if (m_serial.isOpen() && (!file || !m_logFile.isOpen()))
@@ -2765,11 +2835,11 @@ XsensResultValue Cmt3::refreshCache(const bool file)
 			return m_lastResult;		// m_lastResult is already set by gotoConfig()
 
 		// now in configuration mode, read device information
-		CMT3LOG("L3: refreshCache Device in configuration mode, reading device information\n");
-		
+		CMT3LOG(__FUNCTION__ " Device in configuration mode, reading device information\n");
+
 		Message snd;
 		Message rcv;
-		
+
 		// all information is in the Configuration message
 		snd.setMessageId(CMT_MID_REQCONFIGURATION);
 		m_serial.writeMessage(&snd);
@@ -2779,13 +2849,17 @@ XsensResultValue Cmt3::refreshCache(const bool file)
 			m_logFile.writeMessage(&rcv);
 		m_config.readFromMessage(rcv.getMessageStart());
 
+		// Remove BCAST bit if it is present in the device id.
+		// TODO: Check if we want to keep this for release.
+		m_config.m_masterDeviceId &= ~CMT_DID_BROADCAST;
+		for (int i = 0; i < m_config.m_numberOfDevices; i++)
+			m_config.m_deviceInfo[i].m_deviceId &= ~CMT_DID_BROADCAST;
+
+		if (m_config.m_numberOfDevices > CMT_MAX_DEVICES_PER_PORT)
+			return m_lastResult = XRV_CONFIGCHECKFAIL;
+
 		m_period = m_config.m_samplingPeriod;
 		m_skip = m_config.m_outputSkipFactor;
-		//CmtDeviceMode2 mode;
-		//mode.setPeriodAndSkipFactor(m_config.m_samplingPeriod,m_config.m_outputSkipFactor);
-		//mode.m_period = m_config.m_samplingPeriod;
-		//mode.m_skip = m_config.m_outputSkipFactor;
-		//m_sampleFrequency = mode.getRealSampleFrequency();
 
 		return m_lastResult = XRV_OK;
 	}
@@ -2798,10 +2872,10 @@ XsensResultValue Cmt3::refreshCache(const bool file)
 		}
 
 		// now in configuration mode, read device information
-		CMT3LOG("L3: refreshCache Reading device configuration information from file\n");
-		
+		CMT3LOG(__FUNCTION__ " Reading device configuration information from file\n");
+
 		Message rcv;
-		
+
 		if ((m_lastResult = m_logFile.readMessage(&rcv,CMT_MID_CONFIGURATION)) != XRV_OK)
 			return m_lastResult;
 		m_config.readFromMessage(rcv.getMessageStart());
@@ -2824,13 +2898,13 @@ XsensResultValue Cmt3::refreshCache(const bool file)
 //	Wait for a data message to arrive.
 XsensResultValue Cmt3::waitForDataMessage(Packet* pack)
 {
-	CMT3LOGDAT("L3: waitForDataMessage %p\n",pack);
+	CMT3LOGDAT(__FUNCTION__ " %p\n",pack);
 	CMT3EXITLOGDAT;
 
 	m_lastResult = XRV_TIMEOUTNODATA;
+	MillisecondTimer TimeoutTimer;
 
-	uint32_t toEnd = (getTimeOfDay() + (uint32_t) m_timeoutMeas) % (XSENS_MS_PER_DAY);
-	while(toEnd >= getTimeOfDay())
+	while (TimeoutTimer.millisecondsElapsed() < m_timeoutMeas)
 	{
 		m_lastResult = m_serial.waitForMessage(&pack->m_msg,CMT_MID_MTDATA,0,true);
 		if (m_lastResult == XRV_OK)
@@ -2864,7 +2938,7 @@ XsensResultValue Cmt3::waitForDataMessage(Packet* pack)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::createLogFile(const char* filename, bool startLogging)
 {
-	CMT3LOG("L3: createLogFile \"%s\" %u\n",filename?filename:"",startLogging?1:0);
+	CMT3LOG(__FUNCTION__ " \"%s\" %u\n",filename?filename:"",startLogging?1:0);
 	CMT3EXITLOG;
 
 	if (!m_serial.isOpen())
@@ -2875,10 +2949,19 @@ XsensResultValue Cmt3::createLogFile(const char* filename, bool startLogging)
 	if (m_lastResult == XRV_OK)
 	{
 		m_logging = true;
-		CmtDeviceConfiguration config; 
+
+//set the date and time in m_config
+		tm dateTime;
+		getDateTime(&dateTime);
+		getDateAsString(m_config.m_date, &dateTime);
+		getTimeAsString(m_config.m_time, &dateTime);
+
+		CmtDeviceConfiguration config;
 		if (getConfiguration(config) == XRV_OK)
 		{
 			void* buffer = malloc(CMT_EMTS_SIZE*(m_config.m_numberOfDevices+1));
+			if (!buffer)
+				return XRV_OUTOFMEMORY;
 			getEMtsData(buffer,CMT_DID_BROADCAST);
 			free(buffer);
 			m_logging = startLogging;
@@ -2896,7 +2979,7 @@ XsensResultValue Cmt3::createLogFile(const char* filename, bool startLogging)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::createLogFile(const wchar_t* filename, bool startLogging)
 {
-	CMT3LOG("L3: createLogFile \"%S\" %u\n",filename?filename:L"",startLogging?1:0);
+	CMT3LOG(__FUNCTION__ " \"%S\" %u\n",filename?filename:L"",startLogging?1:0);
 	CMT3EXITLOG;
 
 	if (!m_serial.isOpen())
@@ -2907,10 +2990,19 @@ XsensResultValue Cmt3::createLogFile(const wchar_t* filename, bool startLogging)
 	if (m_lastResult == XRV_OK)
 	{
 		m_logging = true;
-		CmtDeviceConfiguration config; 
+
+		//set the date and time in m_config
+		tm dateTime;
+		getDateTime(&dateTime);
+		getDateAsString(m_config.m_date, &dateTime);
+		getTimeAsString(m_config.m_time, &dateTime);
+
+		CmtDeviceConfiguration config;
 		if (getConfiguration(config) == XRV_OK)
 		{
 			void* buffer = malloc(CMT_EMTS_SIZE*(m_config.m_numberOfDevices+1));
+			if (!buffer)
+				return XRV_OUTOFMEMORY;
 			getEMtsData(buffer,CMT_DID_BROADCAST);
 			free(buffer);
 			m_logging = startLogging;
@@ -2928,7 +3020,7 @@ XsensResultValue Cmt3::createLogFile(const wchar_t* filename, bool startLogging)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::closeLogFile(bool del)
 {
-	CMT3LOG("L3: closeLogFile %u\n",del?1:0);
+	CMT3LOG(__FUNCTION__ " %u\n",del?1:0);
 	CMT3EXITLOG;
 
 	m_logging = false;
@@ -2940,18 +3032,29 @@ XsensResultValue Cmt3::closeLogFile(bool del)
 		return m_lastResult = m_logFile.close();
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////
+/*! \brief Check if the log file \a filename is open
+ *
+ * \return true if the file is open
+ * \sa isLogFileOpen(const wchar_t *)
+ */
 bool Cmt3::isLogFileOpen(const char* filename) const
 {
-	CMT3LOG("L3: isLogFileOpen \"%s\"\n",filename?filename:"");
+	CMT3LOG(__FUNCTION__ " \"%s\"\n",filename?filename:"");
 
 	if (m_logFile.isOpen())
 	{
 		if (filename != NULL && filename[0] != 0)
 		{
 			char fn[CMT_MAX_FILENAME_LENGTH];
+			char argFn[CMT_MAX_FILENAME_LENGTH];
+#ifdef _WIN32
+			_fullpath(argFn,filename,CMT_MAX_FILENAME_LENGTH);
+#else
+			if (realpath(filename, argFn) == NULL)
+				return false;
+#endif
 			m_logFile.getName(fn);
-			if (_strnicmp(filename,fn,CMT_MAX_FILENAME_LENGTH) != 0)
+			if (_strnicmp(argFn,fn,CMT_MAX_FILENAME_LENGTH) != 0)
 				return false;
 		}
 		return true;
@@ -2959,18 +3062,38 @@ bool Cmt3::isLogFileOpen(const char* filename) const
 	return false;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////
+/*! \brief Check if the log file \a filename is open
+ *
+ * \return true if the file is open
+ * \sa isLogFileOpen(const char *)
+ */
 bool Cmt3::isLogFileOpen(const wchar_t* filename) const
 {
-	CMT3LOG("L3: isLogFileOpen \"%S\"\n",filename?filename:L"");
+	CMT3LOG(__FUNCTION__ " \"%S\"\n",filename?filename:L"");
 
 	if (m_logFile.isOpen())
 	{
 		if (filename != NULL && filename[0] != L'\0')
 		{
 			wchar_t fn[CMT_MAX_FILENAME_LENGTH];
+			wchar_t argFn[CMT_MAX_FILENAME_LENGTH];
+#ifdef _WIN32
+			_wfullpath(argFn,filename,CMT_MAX_FILENAME_LENGTH);
+#else
+			char mbFilename[CMT_MAX_FILENAME_LENGTH * 4];
+			char mbArgFn[CMT_MAX_FILENAME_LENGTH * 4];
+
+			//convert wide char input file name to a multibyte string
+			wcstombs(mbFilename, filename, CMT_MAX_FILENAME_LENGTH * 4);			
+			
+			if(realpath(mbFilename, mbArgFn) == NULL)
+				return false;			
+
+			//convert the resulting full path (multibyte string) back to a wide char string
+			mbstowcs(argFn, mbArgFn, CMT_MAX_FILENAME_LENGTH);
+#endif
 			m_logFile.getName(fn);
-			if (_wcsnicmp(filename,fn,CMT_MAX_FILENAME_LENGTH) != 0)
+			if (_wcsnicmp(argFn,fn,CMT_MAX_FILENAME_LENGTH) != 0)
 				return false;
 		}
 		return true;
@@ -2981,7 +3104,7 @@ bool Cmt3::isLogFileOpen(const wchar_t* filename) const
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::openLogFile(const char* filename)
 {
-	CMT3LOG("L3: openLogFile \"%s\"\n",filename?filename:"");
+	CMT3LOG(__FUNCTION__ " \"%s\"\n",filename?filename:"");
 	CMT3EXITLOG;
 
 	m_logging = false;
@@ -2992,6 +3115,13 @@ XsensResultValue Cmt3::openLogFile(const char* filename)
 	m_lastResult = m_logFile.open(filename,true);
 	if (m_lastResult == XRV_OK)
 	{
+		// check first two bytes of file for FA FF
+		uint8_t hdrBuf[2] = { 0,0 };
+		m_logFile.getCmt1f()->readData(2,hdrBuf,NULL);
+		if (hdrBuf[0] != 0xFA || hdrBuf[1] != 0xFF)
+			return m_lastResult = XRV_DATACORRUPT;
+		m_logFile.getCmt1f()->setReadPos(0);
+
 		if (refreshCache() == XRV_OK)
 			m_readFromFile = true;
 		else
@@ -3006,7 +3136,7 @@ XsensResultValue Cmt3::openLogFile(const char* filename)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::openLogFile(const wchar_t* filename)
 {
-	CMT3LOG("L3: openLogFile \"%S\"\n",filename?filename:L"");
+	CMT3LOG(__FUNCTION__ " \"%S\"\n",filename?filename:L"");
 	CMT3EXITLOG;
 
 	m_logging = false;
@@ -3017,6 +3147,13 @@ XsensResultValue Cmt3::openLogFile(const wchar_t* filename)
 	m_lastResult = m_logFile.open(filename,true);
 	if (m_lastResult == XRV_OK)
 	{
+		// check first two bytes of file for FA FF
+		uint8_t hdrBuf[2] = { 0,0 };
+		m_logFile.getCmt1f()->readData(2,hdrBuf,NULL);
+		if (hdrBuf[0] != 0xFA || hdrBuf[1] != 0xFF)
+			return m_lastResult = XRV_DATACORRUPT;
+		m_logFile.getCmt1f()->setReadPos(0);
+
 		if (refreshCache() == XRV_OK)
 			m_readFromFile = true;
 		else
@@ -3031,7 +3168,7 @@ XsensResultValue Cmt3::openLogFile(const wchar_t* filename)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::setDataSource(bool readFromFile)
 {
-	CMT3LOG("L3: setDataSource %s\n",readFromFile?"file":"port");
+	CMT3LOG(__FUNCTION__ " %s\n",readFromFile?"file":"port");
 	CMT3EXITLOG;
 
 	if (readFromFile)
@@ -3062,7 +3199,7 @@ XsensResultValue Cmt3::setDataSource(bool readFromFile)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::setLogMode(bool active)
 {
-	CMT3LOG("L3: setLogMode %u\n",active?1:0);
+	CMT3LOG(__FUNCTION__ " %u\n",active?1:0);
 	CMT3EXITLOG;
 
 	if (active && (m_readFromFile || !m_logFile.isOpen()))
@@ -3074,7 +3211,7 @@ XsensResultValue Cmt3::setLogMode(bool active)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::resetLogFileReadPos(void)
 {
-	CMT3LOG("L3: resetLogFileReadPos\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	return m_lastResult = m_logFile.setReadPosition(0);
@@ -3083,7 +3220,7 @@ XsensResultValue Cmt3::resetLogFileReadPos(void)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::writeMessageToLogFile(const Message& msg)
 {
-	CMT3LOG("L3: writeMessageToLogFile\n");
+	CMT3LOG(__FUNCTION__ "\n");
 	CMT3EXITLOG;
 
 	if (!m_logFile.isOpen())
@@ -3095,7 +3232,7 @@ XsensResultValue Cmt3::writeMessageToLogFile(const Message& msg)
 //////////////////////////////////////////////////////////////////////////////////////////
 XsensResultValue Cmt3::getAvailableScenarios(CmtScenario* scenarios, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getAvailableScenarios %p %08x\n",scenarios,deviceId);
+	CMT3LOG(__FUNCTION__ " %p %08x\n",scenarios,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQAVAILABLESCENARIOS);
@@ -3124,7 +3261,7 @@ XsensResultValue Cmt3::getAvailableScenarios(CmtScenario* scenarios, const CmtDe
 
 XsensResultValue Cmt3::getScenario(uint8_t& scenarioType, uint8_t& scenarioVersion, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getScenario %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQSCENARIO);
@@ -3135,17 +3272,28 @@ XsensResultValue Cmt3::getScenario(uint8_t& scenarioType, uint8_t& scenarioVersi
 
 XsensResultValue Cmt3::setScenario(const uint8_t scenarioType, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setScenario %u %08x\n",(uint32_t) scenarioType,deviceId);
+	CMT3LOG(__FUNCTION__ " %u %08x\n",(uint32_t) scenarioType,deviceId);
 	CMT3EXITLOG;
 
+	uint8_t bid = getBusIdInternal(deviceId);
+	if (bid == CMT_BID_INVALID)
+		return (m_lastResult = XRV_INVALIDID);
+
 	uint16_t scenario = (uint16_t) scenarioType;
-	DO_DATA_SET(CMT_MID_SETSCENARIO,CMT_LEN_SETSCENARIO,Short,scenario);
+	DO_DATA_SET_BID(CMT_MID_SETSCENARIO,CMT_LEN_SETSCENARIO,Short,scenario,bid);
+
+	if (bid == CMT_BID_BROADCAST || bid == CMT_BID_MASTER) {
+		bid = 1;
+	}
+	m_config.m_deviceInfo[bid-1].m_currentScenario = scenario;	// update device info
+	//m_config.m_deviceInfo[bid-1].m_currentScenario += (uint16_t)scenarioVersion << 8;
+
 	return m_lastResult = XRV_OK;
 }
 
 XsensResultValue Cmt3::getGravityMagnitude(double& magnitude, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getGravityMagnitude %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQGRAVITYMAGNITUDE);
@@ -3155,7 +3303,7 @@ XsensResultValue Cmt3::getGravityMagnitude(double& magnitude, const CmtDeviceId 
 
 XsensResultValue Cmt3::setGravityMagnitude(const double magnitude, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setGravityMagnitude %f %08x\n",magnitude,deviceId);
+	CMT3LOG(__FUNCTION__ " %f %08x\n",magnitude,deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_SET(CMT_MID_SETGRAVITYMAGNITUDE,CMT_LEN_GRAVITYMAGNITUDE,Float,(float) magnitude);
@@ -3164,7 +3312,7 @@ XsensResultValue Cmt3::setGravityMagnitude(const double magnitude, const CmtDevi
 
 XsensResultValue Cmt3::getGpsLeverArm(CmtVector& arm, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getGpsLeverArm %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQGPSLEVERARM);
@@ -3176,7 +3324,7 @@ XsensResultValue Cmt3::getGpsLeverArm(CmtVector& arm, const CmtDeviceId deviceId
 
 XsensResultValue Cmt3::getGpsStatus(CmtGpsStatus& status, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: getGpsStatus %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	DO_DATA_REQUEST(CMT_MID_REQGPSSTATUS);
@@ -3192,7 +3340,7 @@ XsensResultValue Cmt3::getGpsStatus(CmtGpsStatus& status, const CmtDeviceId devi
 
 XsensResultValue Cmt3::setGpsLeverArm(const CmtVector& arm, const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: setGpsLeverArm [%f %f %f] %08x\n",arm.m_data[0],arm.m_data[1],arm.m_data[2],deviceId);
+	CMT3LOG(__FUNCTION__ " [%f %f %f] %08x\n",arm.m_data[0],arm.m_data[1],arm.m_data[2],deviceId);
 	CMT3EXITLOG;
 
 	uint8_t bid = getBusIdInternal(deviceId);
@@ -3227,7 +3375,7 @@ XsensResultValue Cmt3::setGpsLeverArm(const CmtVector& arm, const CmtDeviceId de
 
 XsensResultValue Cmt3::storeXkfState(const CmtDeviceId deviceId)
 {
-	CMT3LOG("L3: storeXkfState %08x\n",deviceId);
+	CMT3LOG(__FUNCTION__ " %08x\n",deviceId);
 	CMT3EXITLOG;
 
 	uint8_t bid = getBusIdInternal(deviceId);
@@ -3256,79 +3404,4 @@ XsensResultValue Cmt3::storeXkfState(const CmtDeviceId deviceId)
 	}
 	return m_lastResult = XRV_OK;
 }
-
-XsensResultValue Cmt3::setReplayMode(uint8_t &replayMode, const CmtDeviceId deviceId)
-{
-	CMT3LOG("L3: setReplayMode [%02x] %08x\n", replayMode, deviceId);
-	CMT3EXITLOG;
-
-	uint8_t bid = getBusIdInternal(deviceId);
-	if (bid == CMT_BID_INVALID || bid == CMT_BID_BROADCAST)
-		return (m_lastResult = XRV_INVALIDID);
-
-	Message	snd(CMT_MID_SETREPLAYMODE, CMT_LEN_SETREPLAYMODE);
-	snd.setDataByte(replayMode & CMT_REPLAYMODE_MASK);
-	snd.setBusId(bid);
-	m_serial.writeMessage(&snd);
-
-	Message rcv;
-	m_lastResult = m_serial.waitForMessage(&rcv,CMT_MID_SETREPLAYMODEACK,0,true);
-	if (m_lastResult != XRV_OK)
-		return m_lastResult;
-	if (m_logging)
-		m_logFile.writeMessage(&rcv);
-	if (rcv.getMessageId() == CMT_MID_ERROR)
-	{
-		m_lastHwErrorDeviceId = m_config.m_masterDeviceId;
-		if (rcv.getDataSize() >= 2)
-		{
-			uint8_t biddy = rcv.getDataByte(1);
-			getDeviceId(biddy,m_lastHwErrorDeviceId);
-		}
-		return m_lastResult = m_lastHwError = (XsensResultValue) rcv.getDataByte();
-	}
-	else
-	{
-		replayMode = rcv.getDataByte();
-	}
-	return m_lastResult = XRV_OK;
-}
-
-XsensResultValue Cmt3::getReplayMode(uint8_t &replayMode, const CmtDeviceId deviceId)
-{
-	CMT3LOG("L3: getReplayMode [%02x] %08x\n", replayMode, deviceId);
-	CMT3EXITLOG;
-
-	uint8_t bid = getBusIdInternal(deviceId);
-	if (bid == CMT_BID_INVALID || bid == CMT_BID_BROADCAST)
-		return (m_lastResult = XRV_INVALIDID);
-
-	Message	snd(CMT_MID_REQREPLAYMODE);
-	//snd.setDataByte(replayMode);
-	Message rcv;
-
-	snd.setBusId(bid);
-	m_serial.writeMessage(&snd);
-	m_lastResult = m_serial.waitForMessage(&rcv,CMT_MID_REQREPLAYMODEACK,0,true);
-	if (m_lastResult != XRV_OK)
-		return m_lastResult;
-	if (m_logging)
-		m_logFile.writeMessage(&rcv);
-	if (rcv.getMessageId() == CMT_MID_ERROR)
-	{
-		m_lastHwErrorDeviceId = m_config.m_masterDeviceId;
-		if (rcv.getDataSize() >= 2)
-		{
-			uint8_t biddy = rcv.getDataByte(1);
-			getDeviceId(biddy,m_lastHwErrorDeviceId);
-		}
-		return m_lastResult = m_lastHwError = (XsensResultValue) rcv.getDataByte();
-	}
-	else
-	{
-		replayMode = rcv.getDataByte();
-	}
-	return m_lastResult = XRV_OK;
-}
-
 } // end of xsens namespace

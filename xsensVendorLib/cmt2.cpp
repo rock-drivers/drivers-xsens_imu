@@ -3,18 +3,18 @@
 	For information about objects in this file, see the appropriate header:
 	\ref Cmt2.h
 
-	\section FileCopyright Copyright Notice 
+	\section FileCopyright Copyright Notice
 	Copyright (C) Xsens Technologies B.V., 2006.  All rights reserved.
-	
+
 	This source code is intended for use only by Xsens Technologies BV and
 	those that have explicit written permission to use it from
 	Xsens Technologies BV.
-	
+
 	THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
 	KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 	PARTICULAR PURPOSE.
-	
+
 	\section FileChangelog	Changelog
 	\par 2006-04-05, v0.0.1
 	\li Job Mulder:	Created
@@ -26,7 +26,7 @@
 
 namespace xsens {
 
-#ifdef _LOG_CMT2
+#ifdef LOG_CMT2
 #	define CMT2LOG		CMTLOG
 #else
 #	define CMT2LOG(...)
@@ -56,7 +56,7 @@ int32_t findValidMessage(const uint8_t* buffer, const uint16_t bufferLength)
 		return -1;
 
 	// parse header
-	
+
 	hdr = (MessageHeader*) (buffer + pre);
 	if (hdr->m_length == CMT_EXTLENCODE)
 	{
@@ -162,11 +162,11 @@ XsensResultValue Cmt2s::getPortNr(int32_t& port) const
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Open a communication channel to the given serial port name.
-XsensResultValue Cmt2s::open (const char *portName, const uint32_t baudRate)
+XsensResultValue Cmt2s::open (const char *portName, const uint32_t baudRate, uint32_t readBufSize, uint32_t writeBufSize)
 {
 	CMT2LOG("L2: Opening port %s @baud %d\n", portName, baudRate);
 	m_baudrate = baudRate;
-	m_lastResult = m_cmt1s.open(portName, baudRate);
+	m_lastResult = m_cmt1s.open(portName, baudRate, readBufSize, writeBufSize);
 	m_toEnd = 0;
 	CMT2LOG("L2: Port open result %d: %s\n", (int32_t) m_lastResult, xsensResultText(m_lastResult));
 	return m_lastResult;
@@ -175,11 +175,11 @@ XsensResultValue Cmt2s::open (const char *portName, const uint32_t baudRate)
 #ifdef _WIN32
 //////////////////////////////////////////////////////////////////////////////////////////
 // Open a communication channel to the given COM port number.
-XsensResultValue Cmt2s::open (const uint32_t portNumber, const uint32_t baudRate)
+XsensResultValue Cmt2s::open (const uint32_t portNumber, const uint32_t baudRate, uint32_t readBufSize, uint32_t writeBufSize)
 {
 	CMT2LOG("L2: Opening port %d @baud %d\n",(int32_t)portNumber,baudRate);
 	m_baudrate = baudRate;
-	m_lastResult = m_cmt1s.open(portNumber,baudRate);
+	m_lastResult = m_cmt1s.open(portNumber, baudRate, readBufSize, writeBufSize);
 	m_toEnd = 0;
 	CMT2LOG("L2: Port open result %d: %s\n",(int32_t)m_lastResult,xsensResultText(m_lastResult));
 	return m_lastResult;
@@ -282,11 +282,13 @@ XsensResultValue Cmt2s::readMessage(Message* rcv)
 			if (m_onMessageReceived != NULL)
 			{
 				CmtBinaryData* bytes = (CmtBinaryData*) malloc(sizeof(CmtBinaryData));
+				if (!bytes)
+					return XRV_OUTOFMEMORY;
 				bytes->m_size = target;
 				bytes->m_portNr = m_cmt1s.getPortNr();
 //				bytes->m_type = CMT_CALLBACK_ONMESSAGERECEIVED;
 				memcpy(bytes->m_data,m_readBuffer,target);
-#ifdef _LOG_CALLBACKS
+#ifdef LOG_CALLBACKS
 				CMTLOG("C2: m_onMessageReceived(%d,(%d,%d),%p)\n",(int32_t) m_onMessageReceivedInstance, (int32_t) bytes->m_size, (int32_t) bytes->m_portNr, m_onMessageReceivedParam);
 #endif
 				m_onMessageReceived(m_onMessageReceivedInstance,CMT_CALLBACK_ONMESSAGERECEIVED,bytes,m_onMessageReceivedParam);
@@ -312,10 +314,10 @@ XsensResultValue Cmt2s::readMessage(Message* rcv)
 	// a timeout occurred
 	return m_lastResult = XRV_TIMEOUT;
 }
-	
+
 //////////////////////////////////////////////////////////////////////////////////////////
 // Set the callback function for when a message has been received or sent
-XsensResultValue Cmt2s::setCallbackFunction(CmtCallbackSelector tp, int32_t instance, CmtCallbackFunction func, void* param)
+XsensResultValue Cmt2s::setCallbackFunction(CmtCallbackType tp, int32_t instance, CmtCallbackFunction func, void* param)
 {
 	switch (tp)
 	{
@@ -466,11 +468,13 @@ XsensResultValue Cmt2s::waitForMessage(Message* rcv, const uint8_t msgId, uint32
 			if (m_onMessageReceived != NULL)
 			{
 				CmtBinaryData* bytes = (CmtBinaryData*) malloc(sizeof(CmtBinaryData));
+				if (!bytes)
+					return XRV_OUTOFMEMORY;
 				bytes->m_size = target;
 				bytes->m_portNr = m_cmt1s.getPortNr();
 //				bytes->m_type = CMT_CALLBACK_ONMESSAGERECEIVED;
 				memcpy(bytes->m_data,m_readBuffer,target);
-#ifdef _LOG_CALLBACKS
+#ifdef LOG_CALLBACKS
 				CMTLOG("C2: m_onMessageReceived(%d,(%d,%d),%p)\n",(int32_t) m_onMessageReceivedInstance, (int32_t) bytes->m_size, (int32_t) bytes->m_portNr, m_onMessageReceivedParam);
 #endif
 				m_onMessageReceived(m_onMessageReceivedInstance,CMT_CALLBACK_ONMESSAGERECEIVED,bytes,m_onMessageReceivedParam);
@@ -537,7 +541,7 @@ XsensResultValue Cmt2s::writeMessage(Message* msg)
 													,(int32_t) msg->getMessageStart()[3]
 													,(int32_t) msg->getMessageStart()[4]);
 	uint32_t written = 0;
-	m_lastResult = 
+	m_lastResult =
 			m_cmt1s.writeData(msg->getTotalMessageSize(),msg->getMessageStart(),&written);
 
 	if (m_lastResult != XRV_OK)
@@ -555,10 +559,12 @@ XsensResultValue Cmt2s::writeMessage(Message* msg)
 	if (m_onMessageSent != NULL)
 	{
 		CmtBinaryData* bytes = (CmtBinaryData*) malloc(sizeof(CmtBinaryData));
+		if (!bytes)
+			return XRV_OUTOFMEMORY;
 		bytes->m_size = msg->getTotalMessageSize();
 		bytes->m_portNr = m_cmt1s.getPortNr();
 		memcpy(bytes->m_data,msg->getMessageStart(),msg->getTotalMessageSize());
-#ifdef _LOG_CALLBACKS
+#ifdef LOG_CALLBACKS
 		CMTLOG("C2: m_onMessageSent(%d,(%d,%d),%p)\n",(int32_t) m_onMessageSentInstance, (int32_t) bytes->m_size, (int32_t) bytes->m_portNr, m_onMessageSentParam);
 #endif
 		m_onMessageSent(m_onMessageSentInstance,CMT_CALLBACK_ONMESSAGESENT,bytes,m_onMessageSentParam);
@@ -567,7 +573,7 @@ XsensResultValue Cmt2s::writeMessage(Message* msg)
 	CMT2LOG("L2: writeMessage successful\n");
 	return (m_lastResult = XRV_OK);
 }
-	
+
 //////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////// Cmt2f  /////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -720,7 +726,7 @@ XsensResultValue Cmt2f::open(const wchar_t* filename, const bool readOnly)
 // Read the next message from the file
 XsensResultValue Cmt2f::readMessage(Message* msg, const uint8_t msgId)
 {
-	CmtFilePos pos;
+	XsensFilePos pos;
 	uint8_t needle = CMT_PREAMBLE;
 	uint8_t buffer[CMT_MAXMSGLEN];
 	uint32_t length, bcount;
@@ -796,21 +802,21 @@ XsensResultValue Cmt2f::readMessage(Message* msg, const uint8_t msgId)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Get the current file size
-CmtFilePos Cmt2f::getFileSize(void)
+XsensFilePos Cmt2f::getFileSize(void)
 {
 	return m_cmt1f.getFileSize();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Get the current read position of the file
-CmtFilePos Cmt2f::getReadPosition(void)
+XsensFilePos Cmt2f::getReadPosition(void)
 {
 	return m_cmt1f.getReadPos();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Set the read position to the given position
-XsensResultValue Cmt2f::setReadPosition(CmtFilePos pos)
+XsensResultValue Cmt2f::setReadPosition(XsensFilePos pos)
 {
 	return m_lastResult = m_cmt1f.setReadPos(pos);
 }

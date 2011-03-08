@@ -21,18 +21,20 @@
 
 namespace xsens {
 
-#ifdef _LOG_CMT_MSG
+#ifdef LOG_CMT_MSG
 #define MSGLOG		CMTLOG
 #else
 #define MSGLOG(...)
+#endif
+
+#ifndef CMT_OUTPUTSETTINGS_DATAFORMAT_DOUBLE
+#define CMT_OUTPUTSETTINGS_DATAFORMAT_DOUBLE		0x00000300
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Create a Message object with the given data length and message Id.
 Message::Message(const uint8_t msgId, const uint16_t length, const uint16_t maxLength)
 {
-	CMT_CHECKASSIGN
-
 	if (maxLength < CMT_MAXMSGLEN)
 		m_maxLength = CMT_MAXMSGLEN;
 	else
@@ -70,8 +72,6 @@ Message::Message(const uint8_t msgId, const uint16_t length, const uint16_t maxL
 // Create a message from the given source string
 Message::Message(const uint8_t* source, const uint16_t size, const uint16_t maxLength)
 {
-	CMT_CHECKASSIGN
-
 	const MessageHeader* tmp = (MessageHeader*) source;
 	uint16_t length;
 
@@ -104,8 +104,6 @@ Message::Message(const uint8_t* source, const uint16_t size, const uint16_t maxL
 
 Message::Message(const Message& src)
 {
-	CMT_CHECKASSIGN;
-
 	m_maxLength = src.m_maxLength;
 	m_buffer = (MessageHeader*) new char[m_maxLength];
 	memcpy(m_buffer,src.m_buffer,m_maxLength);
@@ -118,17 +116,14 @@ Message::Message(const Message& src)
 // Destroy a Message object.
 Message::~Message()
 {
-	CMT_CHECKASSERT
 	MSGLOG("~Message(): buffer = %p\n",m_buffer);
-	CHKDELNUL(m_buffer);//free(m_buffer);
+	LSTCHKDELNUL(m_buffer);//free(m_buffer);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Clear all data in the message
 void Message::clear(void)
 {
-	CMT_CHECKASSERT
-
 	memset(m_buffer,0,m_maxLength);
 	m_checksum = &(((uint8_t*) m_buffer)[CMT_LEN_MSGHEADER]);
 	m_buffer->m_preamble = CMT_PREAMBLE;
@@ -140,7 +135,6 @@ void Message::clear(void)
 // Return the current value of the data as a double (64 bits).
 double Message::getDataDouble(const uint16_t offset) const
 {
-	CMT_CHECKASSERT
 	double ret;
 	uint8_t* dest = (uint8_t*) &ret;
 	uint8_t* src = &(getDataStart()[offset]);
@@ -154,7 +148,6 @@ double Message::getDataDouble(const uint16_t offset) const
 // Return the current value of the data as a float (32 bits).
 float Message::getDataFloat(const uint16_t offset) const
 {
-	CMT_CHECKASSERT
 	float ret;
 	uint8_t* dest = (uint8_t*) &ret;
 	uint8_t* src = &(getDataStart()[offset]);
@@ -170,7 +163,6 @@ float Message::getDataFloat(const uint16_t offset) const
 // Return the current value of the data as a double(64 bits), after converting it from F1220.
 double Message::getDataF1220(const uint16_t offset) const
 {
-	CMT_CHECKASSERT
 	double ret;
 	int32_t tmp;
 	uint8_t* dest = (uint8_t*) &tmp;
@@ -207,7 +199,6 @@ union Itypes {
 // Return the current value of the data as a double(64 bits), after converting it from FP1632.
 double Message::getDataFP1632(const uint16_t offset) const
 {
-	CMT_CHECKASSERT
 
 	int16_t fpint;
 	int32_t fpfrac;
@@ -286,7 +277,6 @@ void Message::getDataFPValue(double *dest, const uint64_t outputSettings, uint16
 // Return the current value of the data as an uint32_t (32 bits).
 uint32_t Message::getDataLong(const uint16_t offset) const
 {
-	CMT_CHECKASSERT
 	uint32_t ret;
 	uint8_t* dest = (uint8_t*) &ret;
 	uint8_t* src = &(getDataStart()[offset]);
@@ -302,7 +292,6 @@ uint32_t Message::getDataLong(const uint16_t offset) const
 // Return the current value of the data as an uint16_t (16 bits).
 uint16_t Message::getDataShort(const uint16_t offset) const
 {
-	CMT_CHECKASSERT
 	uint16_t ret;
 	uint8_t* dest = (uint8_t*) &ret;
 	uint8_t* src = &(getDataStart()[offset]);
@@ -316,7 +305,6 @@ uint16_t Message::getDataShort(const uint16_t offset) const
 // Return the length of the message buffer.
 uint16_t Message::getDataSize(void) const
 {
-	CMT_CHECKASSERT
 	if (m_buffer->m_length == 255)
 		return ((uint16_t) m_buffer->m_datlen.m_extended.m_length.m_high * 256 + (uint16_t) m_buffer->m_datlen.m_extended.m_length.m_low);
 	else
@@ -327,7 +315,6 @@ uint16_t Message::getDataSize(void) const
 // Internal function to get the start of the data buffer.
 uint8_t* Message::getDataStart(void) const
 {
-	CMT_CHECKASSERT
 	if (m_buffer->m_length == 255)
 	{
 		return const_cast<uint8_t*>(m_buffer->m_datlen.m_extended.m_data);
@@ -340,7 +327,6 @@ uint8_t* Message::getDataStart(void) const
 // Return the length of the message buffer.
 uint16_t Message::getTotalMessageSize(void) const
 {
-	CMT_CHECKASSERT
 	if (m_buffer->m_length == 255)
 		return ((uint16_t) m_buffer->m_datlen.m_extended.m_length.m_high * 256 + (uint16_t) m_buffer->m_datlen.m_extended.m_length.m_low) + CMT_LEN_MSGEXTHEADERCS;
 	else
@@ -359,12 +345,11 @@ bool Message::isChecksumOk(void) const
 // Read the entire message from the given source string
 XsensResultValue Message::loadFromString(const uint8_t* source, const uint16_t size)
 {
-	CMT_CHECKASSERT
 	MSGLOG(__FUNCTION__ " size=%hu, first 7 bytes: %02x %02x %02x %02x %02x %02x %02x\n",size,source[0],source[1],source[2],source[3],source[4],source[5],source[6]);
 	if (size > m_maxLength)
 	{
-		MSGLOG(__FUNCTION__ " returns XRV_PARAMINVALID\n");
-		return XRV_PARAMINVALID;
+		MSGLOG(__FUNCTION__ " returns XRV_INVALIDPARAM\n");
+		return XRV_INVALIDPARAM;
 	}
 	memcpy(m_buffer,source,size);
 	m_checksum = ((uint8_t*) m_buffer) + size-1;
@@ -399,7 +384,6 @@ XsensResultValue Message::loadFromString(const uint8_t* source, const uint16_t s
 //////////////////////////////////////////////////////////////////////////////////////////
 void Message::resizeData(const uint16_t newSize)
 {
-	CMT_CHECKASSERT
 	int32_t index, oldLength;
 
 	MSGLOG("Message.resizeData(%hu): buffer = %p\n",newSize,m_buffer);
@@ -459,14 +443,12 @@ void Message::resizeData(const uint16_t newSize)
 	if (m_autoUpdateChecksum)
 		recomputeChecksum();
 	MSGLOG("Message.resizeData end(%hu): buffer = %p\n",m_maxLength,m_buffer);
-	CMT_CHECKASSERT
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Set the new value of the m_busId field and update the checksum.
 void Message::setBusId(const uint8_t busId)
 {
-	CMT_CHECKASSERT
 	if (m_autoUpdateChecksum)
 		m_checksum[0] += m_buffer->m_busId - busId;
 	m_buffer->m_busId = busId;
@@ -477,7 +459,6 @@ void Message::setBusId(const uint8_t busId)
 void Message::setDataBuffer(const uint8_t* data, const uint16_t offset,
 						const uint16_t count)
 {
-	CMT_CHECKASSERT
 	if (getDataSize() < offset+count)
 		resizeData(offset+count);
 
@@ -496,7 +477,6 @@ void Message::setDataBuffer(const uint8_t* data, const uint16_t offset,
 //////////////////////////////////////////////////////////////////////////////////////////
 void Message::setDataByte(const uint8_t data, const uint16_t offset)
 {
-	CMT_CHECKASSERT
 	if (getDataSize() < offset + 1)
 		resizeData(offset+1);
 
@@ -509,7 +489,6 @@ void Message::setDataByte(const uint8_t data, const uint16_t offset)
 //////////////////////////////////////////////////////////////////////////////////////////
 void Message::setDataDouble(const double data, const uint16_t offset)
 {
-	CMT_CHECKASSERT
 	if (getDataSize() < offset+8)
 		resizeData(offset+8);
 
@@ -529,7 +508,6 @@ void Message::setDataDouble(const double data, const uint16_t offset)
 //////////////////////////////////////////////////////////////////////////////////////////
 void Message::setDataFloat(const float data, const uint16_t offset)
 {
-	CMT_CHECKASSERT
 	if (getDataSize() < offset+4)
 		resizeData(offset+4);
 
@@ -557,8 +535,6 @@ void Message::setDataF1220(const double data, const uint16_t offset)
 // Return the current value of the data as a double(64 bits), after converting it from F1220.
 void Message::setDataFP1632(const double data, const uint16_t offset)
 {
-	CMT_CHECKASSERT
-
 	if (getDataSize() < offset+6)
 		resizeData(offset+6);
 
@@ -658,7 +634,6 @@ void Message::setDataFPValue(const uint64_t outputSettings, const double *data, 
 //////////////////////////////////////////////////////////////////////////////////////////
 void Message::setDataLong(const uint32_t data, const uint16_t offset)
 {
-	CMT_CHECKASSERT
 	if (getDataSize() < offset+4)
 		resizeData(offset+4);
 
@@ -677,7 +652,6 @@ void Message::setDataLong(const uint32_t data, const uint16_t offset)
 //////////////////////////////////////////////////////////////////////////////////////////
 void Message::setDataShort(const uint16_t data, const uint16_t offset)
 {
-	CMT_CHECKASSERT
 	if (getDataSize() < offset+2)
 		resizeData(offset+2);
 
@@ -694,7 +668,6 @@ void Message::setDataShort(const uint16_t data, const uint16_t offset)
 // Set the new value of the m_messageId field and update the checksum.
 void Message::setMessageId(const uint8_t msgId)
 {
-	CMT_CHECKASSERT
 	if (m_autoUpdateChecksum)
 		m_checksum[0] += m_buffer->m_messageId - msgId;
 	m_buffer->m_messageId =msgId;
@@ -704,11 +677,9 @@ void Message::setMessageId(const uint8_t msgId)
 // Copy message src into this
 void Message::operator = (const Message& src)
 {
-	CMT_CHECKASSERT
-
 	if (m_maxLength != src.m_maxLength)
 	{
-		CHKDELNUL(m_buffer);
+		LSTCHKDELNUL(m_buffer);
 		m_maxLength = src.m_maxLength;
 		m_buffer = (MessageHeader*) new char[m_maxLength];
 	}

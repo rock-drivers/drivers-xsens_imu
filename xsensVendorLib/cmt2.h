@@ -1,3 +1,4 @@
+#ifndef XSENS_MONOLITHIC
 /*! \file
 	\brief	Contains the CMT Level 2 interface
 
@@ -16,11 +17,11 @@
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 	PARTICULAR PURPOSE.
 */
+#endif
+#ifndef CMT2_H
+#define CMT2_H
 
-#ifndef _CMT2_H_2006_04_13
-#define _CMT2_H_2006_04_13
-
-#ifndef _CMT_MONOLITHIC
+#ifndef XSENS_MONOLITHIC
 #	include "cmt1.h"
 #	include "cmtmessage.h"
 #	include "xsens_fifoqueue.h"
@@ -116,11 +117,15 @@ public:
 	bool isOpen (void) const { return (m_cmt1s.isOpen()); }
 		//! Open a communication channel to the given serial port name.
 	XsensResultValue open(const char *portName, 
-								const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE);
+							const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE,
+							uint32_t readBufSize = CMT_DEFAULT_READ_BUFFER_SIZE,
+							uint32_t writeBufSize = CMT_DEFAULT_WRITE_BUFFER_SIZE);
 #ifdef _WIN32
 		//! Open a communication channel to the given COM port number.
 	XsensResultValue open(const uint32_t portNumber,
-								const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE);
+							const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE,
+							uint32_t readBufSize = CMT_DEFAULT_READ_BUFFER_SIZE,
+							uint32_t writeBufSize = CMT_DEFAULT_WRITE_BUFFER_SIZE);
 #endif	
 	/*! \brief Read a message from the COM port.
 	
@@ -132,7 +137,7 @@ public:
 	XsensResultValue readMessage(Message* rcv);
 
 	//! Set the callback function for when a message has been received or sent
-	XsensResultValue setCallbackFunction(CmtCallbackSelector tp, int32_t instance, CmtCallbackFunction func, void* param);
+	XsensResultValue setCallbackFunction(CmtCallbackType tp, int32_t instance, CmtCallbackFunction func, void* param);
 
 	/*! \brief Set the default timeout value to use in blocking operations.
 
@@ -216,15 +221,15 @@ public:
 		//! Read the next message from the file, when msgId is non-zero, the first matching message will be returned
 	XsensResultValue readMessage(Message* msg, const uint8_t msgId = 0);
 		//! Get the current file size
-	CmtFilePos getFileSize(void);
+	XsensFilePos getFileSize(void);
 		//! Get the current read position
-	CmtFilePos getReadPosition(void);
+	XsensFilePos getReadPosition(void);
 		//! Set the read position to the given position
-	XsensResultValue setReadPosition(CmtFilePos pos);
+	XsensResultValue setReadPosition(XsensFilePos pos);
 		//! Write a message to the end of the file
 	XsensResultValue writeMessage(const Message* msg);
 };
 
 } // end of xsens namespace
 
-#endif	// _CMT2_H_2006_04_13
+#endif	// CMT2_H

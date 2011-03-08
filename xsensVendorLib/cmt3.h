@@ -1,3 +1,4 @@
+#ifndef XSENS_MONOLITHIC
 /*! \file
 	\brief	Contains the CMT Level 3 interface
 
@@ -16,11 +17,11 @@
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 	PARTICULAR PURPOSE.
 */
+#endif
+#ifndef CMT3_H
+#define CMT3_H
 
-#ifndef _CMT3_H_2006_04_14
-#define _CMT3_H_2006_04_14
-
-#ifndef _CMT_MONOLITHIC
+#ifndef XSENS_MONOLITHIC
 #	include "cmt2.h"
 #	include "cmtpacket.h"
 #endif
@@ -28,15 +29,9 @@
 namespace xsens {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////// Support  classes ////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////
-
-
-//////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////// Cmt3  /////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////
 
-//#define _CORRECT_FOR_CLOCK_MISMATCH
 
 /*! \brief High-level communication class.
 
@@ -50,16 +45,14 @@ class Cmt3 {
 protected:
 	Cmt2s m_serial;					//!< The (optional) CMT level 2 serial object that this class operates on.
 	Cmt2f m_logFile;				//!< The (optional) CMT level 2 logfile object that this class operates on. 
-	double m_rtcMsPerSample;		//!< ms per sample = 1000 / sample frequency.
-	//double m_sampleFrequency;		//!< The sample frequency of the port, computed from sampling period and output skip factor.
 	uint16_t m_period;				//!< The sample period of the port.
 	uint16_t m_skip;				//!< The skip factor of the port.
-	TimeStamp m_rtcStart;			//!< The start of the RTC counter, the time of arrival of sample 0.
+
 	uint32_t m_rtcCount;			//!< The long sample counter (normal counter wraps at 64k).
-#ifdef _CORRECT_FOR_CLOCK_MISMATCH
-	uint32_t m_lastToaTouch;		//!< The sample counter of the last sample that touched the Time Of Arrival
-#endif
 	CmtMtTimeStamp m_rtcLastSc;		//!< The last received sample counter, used to determine wrap-around.
+	xsens::TimeSync m_rtcSync;		//!< Used for synchronizing MT timestamps to system timestamps
+	bool m_rtcInitialized;			//!< Indicates whether the RTC synchronization isinitialized
+
 	uint32_t m_baudrate;		//!< The baudrate that was last set to be used by the port.
 	uint32_t m_timeoutConf;	//!< The config mode timeout.
 	uint32_t m_timeoutMeas;			//!< The measurement mode timeout.
@@ -69,17 +62,17 @@ protected:
 	bool m_measuring;						//!< Keeps track of whether the connected device is measuring or being configured.
 	bool m_detailedScan;			//!< Automatically scan for device details during open. Default is true (recommended).
 	bool m_readFromFile;			//!< Indicates whether to read from the log file or from the serial port.
-	bool m_rtcInitialized;			//!< Indicates if the rtc is initialised or not.
 	bool m_logging;							//!< Indicates whether to write all received messages to the logfile or not, automatically set to true by createLogFile.
 	XsensResultValue m_lastHwError;			//!< Contains the last error reported by hardware.
 	CmtDeviceId m_lastHwErrorDeviceId;		//!< Contains the Device ID of the device that caused the last hardware error.
 
+	uint32_t m_readBufSize;					//!< Contains the size of the serial read buffer
+	uint32_t m_writeBufSize;				//!< Contains the size of the serial write buffer
+
 public:
 	bool m_useRtc;					//!< Indicates if the RTC should be computed or not (to save CPU time).
 	void* m_eMtsData[CMT_MAX_DEVICES_PER_PORT];		//!< Cached eMTS data.
-
-protected:
-	CmtDeviceConfiguration m_config;				//!< The configuration of the connected devices.
+	CmtDeviceConfiguration m_config;				//!< Cached configuration data.
 
 //// functions ///////////////////////////////////////////////////////////////////////////////////
 protected:
@@ -107,7 +100,7 @@ public:
 	uint32_t getDeviceCount(void) const;																//!< \brief Retrieve total device count. \details This function retrieves the total number of connected (master + slave) devices or 0 if not connected.
 	XsensResultValue getDeviceId(const uint8_t busId, CmtDeviceId& deviceId) const;					//!< \brief Retrieve the DeviceId of a device given its Bus ID. \details This function retrieves the DeviceId for the device with the given Bus ID. When no devices are connected, a 0 ID is supplied.
 	XsensResultValue getDeviceMode(CmtDeviceMode& mode, const CmtDeviceId deviceId = CMT_DID_MASTER);		//!< \brief Return device mode. \details This function retrieves the output-related settings of the device, such as the sample rate and output settings. \see setDeviceMode \note This function actually reads the device mode from the cached configuration, so it is available in measurement mode. \see refreshCache
-	XsensResultValue getDeviceMode2(CmtDeviceMode2& mode, const CmtDeviceId deviceId = CMT_DID_MASTER);		//!< \brief Return device mode2. \details This function retrieves the output-related settings of the device, such as the period, skip factor and output settings. \see setDeviceMode \note This function actually reads the device mode from the cached configuration, so it is available in measurement mode. \see refreshCache
+	XsensResultValue getDeviceMode2(CmtDeviceMode2& mode, const CmtDeviceId deviceId = CMT_DID_MASTER);		//!< \brief Return device mode2. \details This function retrieves the outputMode, outputSettings, period and outputSkipFactor of the device. \see setDeviceMode2 \note This function actually reads the device mode from the cached configuration, so it is available in measurement mode. \see refreshCache
 	XsensResultValue getEMtsData(void* buffer, const CmtDeviceId deviceId = CMT_DID_MASTER);				//!< \brief Retrieve the eMts data of the specified sensor(s). \details This function can be used to read proprietary data from one or more Motion Trackers. This data is required by higher level functions in combination with Configuration data to convert Raw data into Calibrated and Orientation data. The eMTs data is quite large, but it is cached. The first request should be done in configuration mode, but following requests can be done in measurement mode. When requesting eMTS data for a single sensor, the buffer should be at least CMT_EMTS_SIZE bytes long. When using CMT_DID_BROADCAST, the eMTS data of all connected sensors is placed into the buffer sequentially. In the latter case, the buffer should be able to hold at least sensorcount * CMT_EMTS_SIZE bytes.
 	XsensResultValue getErrorMode(uint16_t& mode, const CmtDeviceId deviceId = CMT_DID_MASTER);		//!< \brief Return the error mode of the device. \details This function returns the error mode of the device. The error mode determines how the device handles errors. See the low-level communication documentation for more details. \see setErrorMode \note This function is only valid in configuration mode.
 	XsensResultValue getFirmwareRevision(CmtVersion& revision, const CmtDeviceId deviceId = CMT_DID_MASTER);//!< \brief Return Firmware revision. \details This function retrieves the firmware version that is currently installed in the device. \note This function is only valid in configuration mode.
@@ -122,15 +115,15 @@ public:
 
 	XsensResultValue getLatLonAlt(CmtVector& lla, const CmtDeviceId deviceId = CMT_DID_MASTER);					//!< \brief Retrieve the last stored sensor position. \details This function retrieves the last stored position in latitude, longitude, altitude. \see setLatLonAlt
 	XsensResultValue getLocationId (uint16_t& locationId, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Return the location ID of a sensor. \details This function retrieves the location ID stored in the device. \see setLocationId \note This function is only valid in configuration mode.
-	XsensResultValue getLogFileReadPosition(CmtFilePos& pos);													//!< \brief Retrieve the read position of the log file. \details This function will return the current read position in the open log file in bytes from the start. \note The read and write positions of log files are completely independent of each other. \remarks To change the read position, either use resetLogFileReadPos or manipulate the log file through getCmt2f. \see resetLogFileReadPos getCmt2f
+	XsensResultValue getLogFileReadPosition(XsensFilePos& pos);													//!< \brief Retrieve the read position of the log file. \details This function will return the current read position in the open log file in bytes from the start. \note The read and write positions of log files are completely independent of each other. \remarks To change the read position, either use resetLogFileReadPos or manipulate the log file through getCmt2f. \see resetLogFileReadPos getCmt2f
 
-	XsensResultValue getLogFileSize(CmtFilePos& size);															//!< \brief Retrieve the size of the open log file in bytes.
+	XsensResultValue getLogFileSize(XsensFilePos& size);															//!< \brief Retrieve the size of the open log file in bytes.
 	XsensResultValue getLogFileName(char* filename);															//!< \brief Retrieve the name of the open log file or an empty string if no logfile is open
 	XsensResultValue getLogFileName(wchar_t* filename);															//!< \brief Retrieve the name of the open log file or an empty string if no logfile is open
 	XsensResultValue getMagneticDeclination(double& declination, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Return the stored magnetic declination. \details This function retrieves the stored local magnetic declination in radians. The valid range is -pi to +pi. The magnetic declination is used in the sensor fusion process to determine the output orientation. \see getHeading setHeading setMagneticDeclination \note This function is only valid in configuration mode.
 	CmtDeviceId getMasterId(void);																				//! \brief Return the device Id of the first device (master). \details \note The deviceId is read from the cached configuration data, so it is also available in measurement mode.
 
-	const uint16_t getMtCount(void) const;													//!< \brief Retrieve number of MT devices. \details This function will return the number of connected MT devices. Effectively, this returns the device count minus any Xbus Masters.
+	uint16_t getMtCount(void) const;													//!< \brief Retrieve number of MT devices. \details This function will return the number of connected MT devices. Effectively, this returns the device count minus any Xbus Masters.
 	XsensResultValue getMtDeviceId(const uint8_t index, CmtDeviceId& deviceId) const;			//! \brief Return the device Id of an MT device. \details This function returns the ID of the index'th MT (non-Xbus Master) device connected to this object. \note The deviceId is read from the cached configuration data, so it is also available in measurement mode.
 	XsensResultValue getObjectAlignmentMatrix(CmtMatrix& matrix, const CmtDeviceId deviceId = CMT_DID_MASTER);					//!< \brief Retrieve the last stored object alignment matrix. \details Use this function to get the object matrix currently used as the sensor frame with respect to the reference frame. See the manual for more information on coordinate systems and object resets. \see setObjectAlignmentMatrix
 	XsensResultValue getPortNr(uint16_t& port) const;											//!< \brief Return the port number that this object is connected to. \details If CMT is reading from a log file, an error will be returned.
@@ -158,26 +151,33 @@ public:
 	XsensResultValue initBus(void);										//!< \brief Perform an initBus request. \details See the low-level documentation for more information on the InitBus message. \see refreshCache setBusPowerState
 	bool isLogging(void) const			//!< \brief Return whether the Cmt3 object is writing to a log file or not
 		{ return m_logging; }
+	bool isReadingFromFile(void) const	//!< \brief Return whether the Cmt3 object is reading from a log file or not
+		{ return m_readFromFile; }
 	bool isPortOpen(void) const			//!< \brief Return whether the communication port is open or not.
 		{ return (m_serial.isOpen()); }
 	bool isXm(void) const;				//!< \brief Return whether the main device is an Xbus Master or not.
 
-	XsensResultValue openPort(const char *portName, const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE);	//! \brief Open a communication channel to the given COM port number. \details This function is first passed through to the Cmt2s object. Then, the device settings are retrieved and stored locally. This function automatically places the device(s) in config mode, using gotoConfig. \see gotoConfig closePort
+	XsensResultValue openPort(const char *portName, const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE,
+							uint32_t readBufSize = CMT_DEFAULT_READ_BUFFER_SIZE,
+							uint32_t writeBufSize = CMT_DEFAULT_WRITE_BUFFER_SIZE);	//! \brief Open a communication channel to the given COM port number. \details This function is first passed through to the Cmt2s object. Then, the device settings are retrieved and stored locally. This function automatically places the device(s) in config mode, using gotoConfig. \see gotoConfig closePort
 #ifdef _WIN32
-	XsensResultValue openPort(const uint32_t portNumber, const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE);	//! \brief Open a communication channel to the given COM port number. \details This function is first passed through to the Cmt2s object. Then, the device settings are retrieved and stored locally. This function automatically places the device(s) in config mode, using gotoConfig. \see gotoConfig closePort
+	XsensResultValue openPort(const uint32_t portNumber, const uint32_t baudRate = CMT_DEFAULT_BAUD_RATE,
+							uint32_t readBufSize = CMT_DEFAULT_READ_BUFFER_SIZE,
+							uint32_t writeBufSize = CMT_DEFAULT_WRITE_BUFFER_SIZE);	//! \brief Open a communication channel to the given COM port number. \details This function is first passed through to the Cmt2s object. Then, the device settings are retrieved and stored locally. This function automatically places the device(s) in config mode, using gotoConfig. \see gotoConfig closePort
 #endif
 	XsensResultValue peekLogMessageId(uint8_t& messageId);														//!< \brief Peek(take a look) at the message ID of the next message. \details This function can only be used when reading from a log file. It will find the next message in the file and place its message ID in the messageId parameter. Afterwards, the read position of the file will be restored. \remarks This function is mostly useful when dealing with a file that has more than just data messages. By using the peek function, it is possible to decide whether a readDataPacket should be called or for example getBatteryLevel or getGpsStatus. When the peek function is not used and for example getBatteryLevel is called, all messages between the current read position and the first battery level message in the file will be skipped. An alternative would be to get the read position, call the desired function (get battery level) and restore the read position, but then the moment at which the (battery level, UTC time, satellite info, etc) data becomes available will not be known.
 	XsensResultValue readDataPacket (Packet* pack, bool acceptOther = false);										//!< \brief Retrieve a data message. \details This function will attempt to read a data message from the open port or from the log file, depending on the system state. When acceptOther is set to true, the first received message will be returned. If a data message is successfully read, XRV_OK will be returned. If another message is read, XRV_OTHER will be returned and the received message will be placed in the Packet. Otherwise, an appropriate error will be returned.
 	XsensResultValue requestData(Packet* pack, const uint8_t *data = 0, const uint16_t count = 0);					//!\brief Request a data message and wait for it to arrive. \details This function is only useful when the skip factor is set to 0xFFFF.
 	XsensResultValue reset(void);																					//!< \brief Reset all connected sensors.
 	XsensResultValue resetOrientation(const CmtResetMethod method, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Perform an orientation reset on a device. \details This function performs an orientation reset. See the MT documentation for more information about Orientation resets. \note If you wish to save the setting to the device, perform the CMT_RESETORIENTATION_STORE operation while in Config mode after having performed the appropriate orientation reset in measurement mode.
+	XsensResultValue runSelfTest(uint16_t &result, const CmtDeviceId deviceId = CMT_DID_MASTER);					//!< \brief Let the MT perform a self test. The status of the selftest can be viewed in the status byte. The function will always return immediately.
 	XsensResultValue setNoRotation(const uint16_t duration, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Initiates the XKF3 'no rotation' update procedure. \details This function Initiates the XKF3 'no rotation' update procedure. See the MT documentation for more information. \note Note that this message does not convey any status. Bits 3-4 of the MT status byte are used instead. Only valid in measurement mode.
 	XsensResultValue restoreFactoryDefaults(const CmtDeviceId deviceId = CMT_DID_MASTER);							//!< \brief Restore the device to factory default settings. \details This function completely restores the selected device to the default settings (115k2 baud rate, 100Hz sample frequency, factory defined scenarios). \note This function is only available in configuration mode.
 	XsensResultValue setBaudrate (const uint32_t baudrate, bool reconnect = true);								//!< \brief Set the baudrate and possibly reconnect. \details Use this function to change the baudrate of the device. This actually tries to change the baud rate of the current connection. When reconnect is set to true, the device receives a Reset message and the port is reopened at the new baudrate. Otherwise, make sure to perform a Reset manually, since the new baudrate will not be set until a Reset has been performed. \note To change the baudrate of the serial connection while connected via Bluetooth, use setSerialBaudrate. \see getBaudrate setSerialBaudrate getSerialBaudrate \note This function is only available in configuration mode.
 	XsensResultValue setBluetoothState(const bool enabled);															//!< \brief Set the Bluetooth state of the Xbus Master. \details This function sets the state of the bluetooth communication to on or off. \note This function is only available in configuration mode.
 	XsensResultValue setBusPowerState(const bool enabled);																	//!< \brief Switch the Xbus Master bus power on or off. \details Use this function to switch the Xbus Master Xbus power on or off. \remarks This function can be used to save a lot of power when not measuring, while still keeping a connection to the system. However, there is a relatively long startup time when restoring power as the sensors are reinitialized. \note You will need to perform an initBus and possibly a refreshCache call after switching the power back on with this function. \note This function is only available in configuration mode. \see initBus refreshCache
 	XsensResultValue setDeviceMode (const CmtDeviceMode& mode, bool force, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Set the complete output mode of a device. \details This function updates the complete output mode of the specified device. It only updates values that are different than those reported by the device unless force is set to true. The function will automatically update only the part of the device mode that is relevant for the device. So it is possible to configure all devices, including an Xbus Master with the same mode (only the Xbus Master will update its period, while the Motion Trackers will update their output mode and settings). \note This function is only available in configuration mode. \see getDeviceMode getDeviceMode2 setDeviceMode2
-	XsensResultValue setDeviceMode2 (const CmtDeviceMode2& mode, bool force, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Set the complete output mode2 of a device. \details This function updates the complete output mode of the specified device. It only updates values that are different than those reported by the device unless force is set to true. The function will automatically update only the part of the device mode that is relevant for the device. So it is possible to configure all devices, including an Xbus Master with the same mode (only the Xbus Master will update its period, while the Motion Trackers will update their output mode and settings). \note This function is only available in configuration mode. \see getDeviceMode2 getDeviceMode setDeviceMode
+	XsensResultValue setDeviceMode2 (const CmtDeviceMode2& mode, bool force, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Set the complete output mode2 of a device. \details This function updates the outputMode, outputSettings, period and outputSkipFactor of the specified device. It only updates values that are different than those reported by the device unless force is set to true. The function will automatically update only the part of the device mode that is relevant for the device. So it is possible to configure all devices, including an Xbus Master with the same mode (only the Xbus Master will update its period, while the Motion Trackers will update their output mode and settings). \note This function is only available in configuration mode. \see getDeviceMode2 getDeviceMode setDeviceMode
 	XsensResultValue setErrorMode(const uint16_t mode);																//!< \brief Set the error mode of the device. \details This function sets the error mode of the device. The error mode determines how the device handles errors. See the low-level communication documentation for more details. \note This function is only available in configuration mode. \see getErrorMode
 	XsensResultValue setGotoConfigTries(const uint16_t tries);												//!< \brief Set the number of times the gotoConfig function will attempt a gotoConfig before failing. \details This is especially useful when using RS485 communication or when for some reason the communication lines are not reliable.
 	XsensResultValue setHeading (const double heading, const CmtDeviceId deviceId = CMT_DID_MASTER);				//!< \brief Set the heading offset. \details This function sets the heading offset in radians used by the device. The valid range is -pi to +pi. The heading offset is used as a final correction on the output orientation. \note This function is only available in configuration mode. \see getHeading getMagneticDeclination setMagneticDeclination
@@ -225,10 +225,8 @@ public:
 	XsensResultValue getGpsStatus(CmtGpsStatus& status, const CmtDeviceId deviceId = CMT_DID_MASTER);		//!< \brief Request the status of the GPS satellites in orbit. \details This function requests the GPS satellite status information from the GPS subsystem. In config mode, this information is requested from the GPS subsystem immediately, which can cause a relatively long delay (250ms) before a reply is received. In measurement mode, the satellite status is regularly polled internally and the latest status is returned immediately when this function is called.
 	XsensResultValue setGpsLeverArm(const CmtVector& arm, const CmtDeviceId deviceId = CMT_DID_MASTER);		//!< \brief Set the currently used GPS lever arm. \details Use this function to set the vector currently used as the GPS lever arm. The GPS lever arm is the relative position of the GPS antenna to the MTi-G unit. The arm is specified in the object coordinate system and in meters. See the manual for more information on coordinate systems, alignment resets and the lever arm. \see getGpsLeverArm \note This function is only available in configuration mode. \note This function is only available for MTi-G devices.
 	XsensResultValue storeXkfState(const CmtDeviceId deviceId = CMT_DID_MASTER);							//!< \brief Store important components of the XKF filter state to non-volatile memory. \details This function allows you to store some critical components of the internal XKF filter state to non-volatile memory. The stored settings will be used to initialize the filter whenever the sensor is switched to Measurement mode. \note This function is only available in Config mode.
-	XsensResultValue setReplayMode(uint8_t &replayMode, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Set replay mode of the MT. \details This function controls the replay mode of the MT. \note This function is only available in Config mode.
-	XsensResultValue getReplayMode(uint8_t &replayMode, const CmtDeviceId deviceId = CMT_DID_MASTER);	//!< \brief Request the replay mode of the MT. \details This function returns the replay mode of the MT. \note This function is only available in Config mode.
 };
 
 } // end of xsens namespace
 
-#endif	// _CMT3_H_2006_04_14
+#endif	// CMT3_H

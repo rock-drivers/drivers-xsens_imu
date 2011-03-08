@@ -1,3 +1,4 @@
+#ifndef XSENS_MONOLITHIC
 /*! \file
 	\brief	Contains the ScanPorts interface
 
@@ -22,12 +23,13 @@
 	\par 2006-07-21, v0.1.0
 	\li Job Mulder:	Updated file for release 0.1.0
 */
+#endif
 
-#ifndef _SCANPORTS_H_2006_06_09
-#define _SCANPORTS_H_2006_06_09
+#ifndef CMTSCAN_H
+#define CMTSCAN_H
 
-#ifndef _CMT_MONOLITHIC
-#	include "xsens_list.hpp"
+#ifndef XSENS_MONOLITHIC
+#	include "xsens_list.h"
 #endif
 
 namespace xsens {
@@ -41,7 +43,7 @@ namespace xsens {
 	Any detected devices are returned in the ports list, which is sorted by port nr.
 	
 */
-bool cmtScanPorts(List<CmtPortInfo>& ports, uint32_t baudrate = 0, uint32_t singleScanTimeout = 1000, uint32_t scanTries = 1);
+bool cmtScanPorts(List<CmtPortInfo>& ports, uint32_t baudrate = 0, uint32_t singleScanTimeout = 1000, uint32_t scanTries = 1, bool ignoreNonXsensDevices = true);
 
 /*! \brief Scan a single COM port for connected Xsens devices.
 
@@ -59,4 +61,4 @@ extern bool abortScan;
 
 } // end of xsens namespace
 
-#endif	// _SCANPORTS_H_2006_06_09
+#endif	// CMTSCAN_H

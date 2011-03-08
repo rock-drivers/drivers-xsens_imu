@@ -1,5 +1,5 @@
-#ifndef _XSENS_TIME_2006_09_12
-#define _XSENS_TIME_2006_09_12
+#ifndef XSENS_TIME_H
+#define XSENS_TIME_H
 
 #ifndef _PSTDINT_H_INCLUDED
 #	include "pstdint.h"
@@ -13,9 +13,11 @@ namespace xsens {
 #define XSENS_SEC_PER_DAY	(60*60*24)
 //! The number of milliseconds in a normal day
 #define XSENS_MS_PER_DAY	(XSENS_SEC_PER_DAY*1000)
+//! The number of milliseconds in a normal day
+#define XSENS_TIMESTAMP_MAX	(0x7FFFFFFFFFFFFFFFLL)
 
 //! A real-time timestamp (ms)
-typedef uint64_t TimeStamp;
+typedef int64_t TimeStamp;
 
 /*! \brief A platform-independent clock.
 
@@ -24,6 +26,29 @@ typedef uint64_t TimeStamp;
 */
 uint32_t getTimeOfDay(tm* date_ = NULL, time_t* secs_ = NULL);
 
+/*! \brief Retrieves the date and time (platform-independent)	
+	\param date : if non-zero the local (!) date and time is stored in the tm struct this parameter points to
+	\return The UTC date and time as seconds since 1970
+*/
+int64_t getDateTime(tm * date = 0);
+
+/*! \brief Retrieves the date as string representation
+	The format is YYYYMMDD
+	so 25 dec 2010 is stored as an array dest[8] = {'2', '0', '1', '0', '1', '2', '2', '5' }
+	\param dest : A pointer to an array of at least (!) 8 bytes
+	\param date : If date is non-zero this date is converted, otherwise the current date is retrieved and used)
+*/
+void getDateAsString(uint8_t* dest, tm const* date = 0);
+
+/*! \brief Retrieves the time as binary 
+	The format is HHMMSShh (where H is hour and 'h' is hundredths)
+	so 14:25:01.23 is stored as an array dest[8] = { '1', '4', '2', '5', '0',  '1', '2', '3'}
+	\param dest : A pointer to an array of at least (!) 8 bytes
+	\param date : If date is non-zero this date is converted, otherwise the current date is retrieved and used)
+	\note (for now hundreths are set to 0)
+*/
+void getTimeAsString(uint8_t* dest, tm const* date = 0);
+
 /*! \brief A platform-independent sleep routine.
 
 	Time is measured in ms. The function will not return until the specified
@@ -31,38 +56,43 @@ uint32_t getTimeOfDay(tm* date_ = NULL, time_t* secs_ = NULL);
 */
 void msleep(uint32_t ms);
 
-TimeStamp timeStampNow(void);
+TimeStamp timeStampNow();
+void initializeTime();
 
+
+class TimeSyncPrivate;
 class TimeSync {
 private:
-	int m_timeSet;
-	double m_timeOffset;	//!< offset of clock in ms wrt timeStampNow
-	double m_tSyncPerSys;	//!< Number of sync seconds per system second passed
-	int64_t m_tSysStart;	//!< Start time from which tSyncPerSys should be computed
-	int64_t m_tSyncStart;	//!< Start time for next m_tSyncPerSys computation
-
-	int64_t m_tLastSysStart;	//!< Start time from which new sync values should be computed
-	int64_t m_tLastSyncStart;	//!< Start time from which new sync values should be computed
-
-	double m_dtSync;
-	double m_dtSys;
-
-	double m_tolerance;		//!< Tolerance between clock speeds (jitter), typically 1% ==> 0.01
-	double m_avgFactor;		//!< Factor for moving average filter. new1 = (factor*old+(1-factor)*new0)
+	TimeSyncPrivate* d;
 
 public:
-	TimeSync(double tolerance, double factor) : m_timeSet(0), m_tolerance(tolerance), m_avgFactor(factor) { }
+	TimeSync(double skew, int historySize);
+	~TimeSync();
 
-	bool isSet(void) { return m_timeSet != 0; }
-	void reset(void) { m_timeSet = 0; }
-	void setCurrentTime(TimeStamp syncTime, TimeStamp receiveTime);
-	double getOffset(void) const { return m_timeOffset; }
-	double getDrift(void) const { return m_tSyncPerSys; }
+	int isInitialized() const;
+	void reset();
+	void update(TimeStamp local, TimeStamp external);
+	void setInitialSkew(double skew);
 
-	TimeStamp getCurrentTime(int64_t ts) { if (m_timeSet) return m_tSyncStart+int64_t(double(ts-m_tSysStart)*m_tSyncPerSys); else return ts; }
-	TimeStamp getInverseTime(int64_t ts) { if (m_timeSet) return m_tSysStart+int64_t(double(ts-m_tSyncStart)/m_tSyncPerSys); else return ts; }
+	TimeStamp localTime(TimeStamp external);
+	TimeStamp externalTime(TimeStamp local);
 };
+
+
+class MillisecondTimer
+{
+public:
+	MillisecondTimer();
+	void restart();
+	uint32_t millisecondsElapsed();
+private:
+	uint32_t m_tstart;
+};
+
 
 }	// end of xsens namespace
 
-#endif	// _XSENS_TIME_2006_09_12
+
+
+
+#endif	// XSENS_TIME_H

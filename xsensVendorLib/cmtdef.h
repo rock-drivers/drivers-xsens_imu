@@ -27,11 +27,13 @@
 	\li Job Mulder:	Updated file for release 0.1.0
 */
 
-#ifndef _CMTDEF_H_2006_05_01
-#define _CMTDEF_H_2006_05_01
+#ifndef CMTDEF_H
+#define CMTDEF_H
 
+#ifndef XSENS_MONOLITHIC
 #ifndef _PSTDINT_H_INCLUDED
 #	include "pstdint.h"
+#endif
 #endif
 #include <time.h>
 
@@ -50,19 +52,19 @@
 #   define __stdcall __attribute__((stdcall))
 #endif
 
-#ifndef _XSENS_STD_H_2006_09_11
+#ifndef XSENS_STD_H
 #	include "xsens_std.h"
 #endif
-#if !defined(_XSENS_TIME_2006_09_12) && !defined(_CMT_DLL_IMPORT)
+#if !defined(XSENS_TIME_H) &&!defined(CMT_DLL_IMPORT)
 #	include "xsens_time.h"
 #endif
 
-#ifndef _CMT_FILE_DEF_H_2007_01_24
-#	include "cmtf.h"
+#ifndef XSENS_FILE_H
+#	include "xsens_file.h"
 #endif
 
-#ifdef _CMT_STATIC_LIB
-//namespace xsens {
+#ifdef __cplusplus
+#include <string.h>
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -100,6 +102,7 @@
 
 // DID Type (high nibble)
 #define CMT_DID_TYPEH_MASK				0x00F00000
+#define CMT_DID_TYPEL_MASK				0x000F0000
 #define CMT_DID_TYPEH_MT				0x00000000
 #define CMT_DID_TYPEH_XM				0x00100000
 #define CMT_DID_TYPEH_MTI_MTX			0x00300000
@@ -107,7 +110,7 @@
 #define CMT_DID_TYPE_MASK				0x00FF0000
 #define CMT_DID_TYPE_MASK_MT_232		0x00300000
 #define CMT_DID_TYPE_MASK_MT_422		0x00310000
-#define CMT_DID_TYPE_MASK_MT_XM			0x00320000
+#define CMT_DID_TYPE_MASK_MT_XM			0x00020000
 #define CMT_DID_TYPE_MASK_MT_485		0x00330000
 
 // All Message identifiers
@@ -291,11 +294,6 @@
 #define CMT_MID_SETINITTRACKMODE		0x88
 #define CMT_MID_SETINITTRACKMODEACK		0x89
 
-// obsolete
-//#define CMT_MID_STOREFILTERSTATE		0x8A
-//#define CMT_LEN_STOREFILTERSTATE		0
-//#define CMT_MID_STOREFILTERSTATEACK	0x8B
-// new definition
 #define CMT_MID_STOREXKFSTATE			0x8A
 #define CMT_LEN_STOREXKFSTATE			0
 #define CMT_MID_STOREXKFSTATEACK		0x8B
@@ -329,12 +327,6 @@
 #define CMT_MID_SETGPSLEVERARMACK		0x69
 #define CMT_LEN_GPSLEVERARM				12
 
-#define CMT_MID_REQREPLAYMODE			0x6C
-#define CMT_MID_REQREPLAYMODEACK		0x6D
-#define CMT_MID_SETREPLAYMODE			0x6C
-#define CMT_MID_SETREPLAYMODEACK		0x6D
-#define CMT_LEN_SETREPLAYMODE			1
-
 #define CMT_MID_REQLATLONALT			0x6E
 #define CMT_MID_REQLATLONALTACK			0x6F
 #define CMT_LEN_LATLONALT				18
@@ -350,6 +342,10 @@
 #define CMT_MID_SETNOROTATION			0x22
 #define CMT_MID_SETNOROTATIONACK		0x23
 #define CMT_LEN_SETNOROTATION			2
+
+#define CMT_MID_RUNSELFTEST				0x24
+#define CMT_MID_SELFTESTRESULTS			0x25
+#define CMT_SELFTEST_OK					0x1FF
 
 // Manual
 #define CMT_MID_PREPAREDATA				0x32
@@ -521,12 +517,10 @@
 
 #define CMT_INVALIDSETTINGVALUE			0xFFFFFFFF
 
-
 // Valid in all states
 #define CMT_MID_RESET					0x40
 #define CMT_MID_RESETACK				0x41
 #define CMT_MID_ERROR					0x42
-//#define CMT_LEN_ERROR					1
 // XbusMaster
 #define CMT_MID_XMPWROFF				0x44
 // End XbusMaster
@@ -550,6 +544,7 @@
 #define CMT_LEN_GPSSTATUS				(1+5*16)
 
 // Baudrate defines for SetBaudrate message
+#define CMT_BAUDCODE_4K8				0x0B
 #define CMT_BAUDCODE_9K6				0x09
 //	#define CMT_BAUDCODE_14K4				0x08
 #define CMT_BAUDCODE_19K2				0x07
@@ -560,6 +555,7 @@
 #define CMT_BAUDCODE_115K2				0x02
 #define CMT_BAUDCODE_230K4				0x01
 #define CMT_BAUDCODE_460K8				0x00
+#define CMT_BAUDCODE_921K6_ALT			0x0A		// only usable from FW 2.4.6
 #define CMT_BAUDCODE_921K6				0x80
 
 // Xbus protocol error codes (Error)
@@ -664,7 +660,8 @@
 #define CMT_OUTPUTMODE_MT9				0x8000
 #define CMT_OUTPUTMODE_XM				0x0000
 #define CMT_OUTPUTMODE_RAW				0x4000
-#define CMT_OUTPUTMODE_RAWGPSPRINT		0x1000
+//#define CMT_OUTPUTMODE_RAWGPSPRINT		0x1000	// Obsolete. Use CMT_OUTPUTMODE_GPSPVT_PRESSURE instead
+#define CMT_OUTPUTMODE_GPSPVT_PRESSURE	0x1000
 #define CMT_OUTPUTMODE_TEMP				0x0001
 #define CMT_OUTPUTMODE_CALIB			0x0002
 #define CMT_OUTPUTMODE_ORIENT			0x0004
@@ -673,11 +670,11 @@
 #define CMT_OUTPUTMODE_VELOCITY			0x0020
 #define CMT_OUTPUTMODE_STATUS			0x0800
 
-
 // CmtOutputSettings
 #define CMT_OUTPUTSETTINGS_XM						0x00000001
 #define CMT_OUTPUTSETTINGS_TIMESTAMP_NONE			0x00000000
 #define CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT		0x00000001
+#define CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLEUTC		0x00000002
 #define CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION	0x00000000
 #define CMT_OUTPUTSETTINGS_ORIENTMODE_EULER			0x00000004
 #define CMT_OUTPUTSETTINGS_ORIENTMODE_MATRIX		0x00000008
@@ -692,14 +689,10 @@
 #define CMT_OUTPUTSETTINGS_DATAFORMAT_FLOAT			0x00000000
 #define CMT_OUTPUTSETTINGS_DATAFORMAT_F1220			0x00000100
 #define CMT_OUTPUTSETTINGS_DATAFORMAT_FP1632		0x00000200
-#define CMT_OUTPUTSETTINGS_DATAFORMAT_DOUBLE		0x00000300
 #define CMT_OUTPUTSETTINGS_AUXILIARYMODE_AIN1		0x00000800			
 #define CMT_OUTPUTSETTINGS_AUXILIARYMODE_AIN2		0x00000400
 #define CMT_OUTPUTSETTINGS_POSITIONMODE_LLA_WGS84	0x00000000
 #define CMT_OUTPUTSETTINGS_VELOCITYMODE_MS_XYZ		0x00000000
-#define CMT_OUTPUTSETTINGS_UNCERTAINTY_ORIENT		0x00100000
-#define CMT_OUTPUTSETTINGS_UNCERTAINTY_POS			0x00200000
-#define CMT_OUTPUTSETTINGS_UNCERTAINTY_VEL			0x00400000
 #define CMT_OUTPUTSETTINGS_TIMESTAMP_MASK			0x00000003
 #define CMT_OUTPUTSETTINGS_ORIENTMODE_MASK			0x0000000C
 #define CMT_OUTPUTSETTINGS_CALIBMODE_ACC_MASK		0x00000010
@@ -712,33 +705,11 @@
 #define CMT_OUTPUTSETTINGS_AUXILIARYMODE_MASK		0x00000C00
 #define CMT_OUTPUTSETTINGS_POSITIONMODE_MASK		0x0001C000
 #define CMT_OUTPUTSETTINGS_VELOCITYMODE_MASK		0x00060000
-#define CMT_OUTPUTSETTINGS_UNCERTAINTY_MASK			0x00F00000
 #define CMT_OUTPUTSETTINGS_COORDINATES_NED			0x80000000
-
-//#define CMT_OUTPUTMODE_XKF3_ACCG					0x100000000
 
 // Extended (analog) Output Modes
 #define CMT_EXTOUTPUTMODE_DISABLED			0x0000
 #define CMT_EXTOUTPUTMODE_EULER				0x0001
-
-// Factory Output Mode
-#define CMT_FACTORYOUTPUTMODE_DISABLE		0x0000
-#define CMT_FACTORYOUTPUTMODE_DEFAULT		0x0001
-#define CMT_FACTORYOUTPUTMODE_CUSTOM		0x0002
-
-// Initial tracking mode (SetInitTrackMode)
-#define CMT_INITTRACKMODE_DISABLED		0x0000
-#define CMT_INITTRACKMODE_ENABLED		0x0001
-
-// Filter settings params
-#define CMT_PARAM_FILTER_GAIN			0x00
-#define CMT_PARAM_FILTER_RHO			0x01
-#define CMT_DONOTSTORE					0x00
-#define CMT_STORE						0x01
-
-// AMDSetting (SetAMD)
-#define CMT_AMDSETTING_DISABLED			0x0000
-#define CMT_AMDSETTING_ENABLED			0x0001
 
 // Processing flags
 #define CMT_PROCESSINGFLAGS_IGBU_ENABLED	0x0001
@@ -801,6 +772,7 @@
 
 // openPort baudrates
 #ifdef _WIN32
+	#define CMT_BAUD_RATE_4800					CBR_4800
 	#define CMT_BAUD_RATE_9600					CBR_9600
 //	#define CMT_BAUD_RATE_14K4					CBR_14400
 	#define CMT_BAUD_RATE_19K2					CBR_19200
@@ -812,6 +784,7 @@
 	#define CMT_BAUD_RATE_460K8					460800
 	#define CMT_BAUD_RATE_921K6					921600
 #else
+	#define CMT_BAUD_RATE_4800					B4800
 	#define CMT_BAUD_RATE_9600					B9600
 //	#define CMT_BAUD_RATE_14K4					B14400
 	#define CMT_BAUD_RATE_19K2					B19200
@@ -824,31 +797,17 @@
 	#define CMT_BAUD_RATE_921K6					B921600
 #endif
 
-#define CMT_REPLAYMODE_MASK			0x03
-#define CMT_REPLAYMODE_RAW			0x01
-#define CMT_REPLAYMODE_CALIBRATED	0x02
-#define CMT_REPLAYFORMAT_MASK		0x0C
-#define CMT_REPLAYFORMAT_FASTFLOAT	0x00
-#define CMT_REPLAYFORMAT_DOUBLE		0x04
-#define CMT_REPLAYFORMAT_SINGLE		0x08 // not supported
-#define CMT_REPLAYDATA_MASK			0x30
-#define CMT_REPLAYDATA_GPS			0x10
-#define CMT_REPLAYDATA_RAWSENSOR	0x20
-
 #define CMT_DEFAULT_OUTPUT_MODE			CMT_OUTPUTMODE_ORIENT
 #define CMT_DEFAULT_OUTPUT_SETTINGS		(CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION |\
 										 CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT)
 
-#define CMT_GOTO_CONFIG_TRIES			3	// 50
+#define CMT_GOTO_CONFIG_TRIES			3
 
 #define CMT_MAX_DEVICES_PER_PORT		11
 #define CMT_DEFAULT_SAMPLE_FREQUENCY	100
 #define CMT_DEFAULT_PERIOD				1152
 #define CMT_DEFAULT_SKIP				0
-#define CMT_DEFAULT_FILTER_GAIN			1.0f
-#define CMT_DEFAULT_FILTER_WEIGHTING	1.0f
 #define CMT_SYNCOUT_DEFAULT_PULSE_WIDTH	1000000		// 1ms = 1M ns
-
 
 #define CMT_MAX_PORTS_PER_THREAD	20
 #define CMT_MAX_FILES_PER_THREAD	20
@@ -885,9 +844,11 @@
 	//! The default timeout value for L4 configuration settings
 #define CMT4_DEFAULT_TIMEOUT_CONF		CMT3_DEFAULT_TIMEOUT_CONF
 	//! The timeout to use for requests during measurement mode
-#define CMT4_MEASUREMENT_REQ_TIMEOUT	100
+#define CMT4_MEASUREMENT_REQ_TIMEOUT	200
 	//! The standard timeout to use for data receipt in measurement mode
 #define CMT4_DEFAULT_TIMEOUT_DATA		3000
+	//! The timeout used for reading a wakeup message in config mode
+#define CMT4_CONFIGWAIT_TIMEOUT			50
 
 enum CmtControlLine {
 	CMT_CONTROL_DCD		= 0x0001,		// pin 1: Carrier Detect
@@ -921,6 +882,13 @@ enum CmtXmSyncMode {
 //! The type of a Device Id
 typedef uint32_t	CmtDeviceId;
 
+//! A structure for storing the firmware version
+struct CmtVersion {
+	uint8_t m_major;
+	uint8_t m_minor;
+	uint8_t m_revision;
+};
+
 /* different alignment commands for gcc / MSVS, the structure needs to be 2-byte aligned
 	because the deviceId field is 4 bytes long on offset 98.
 */
@@ -945,10 +913,16 @@ struct CmtDeviceConfiguration {
 		uint16_t	m_dataLength;
 		uint16_t	m_outputMode;
 		uint32_t	m_outputSettings;
-		uint8_t	m_reserved[8];
+		uint16_t	m_currentScenario;
+		uint8_t		m_fwRevMajor;
+		uint8_t		m_fwRevMinor;
+		uint8_t		m_fwRevRevision;
+		uint8_t		m_filterType;
+		uint8_t		m_filterMajor;
+		uint8_t		m_filterMinor;
 	} m_deviceInfo[CMT_MAX_DEVICES_PER_PORT];
 
-#ifndef _CMT_DLL_IMPORT
+#if !defined(CMT_DLL_IMPORT)
 	void readFromMessage(const void* message);
 #endif
 }
@@ -972,7 +946,7 @@ struct CmtDataFormat {
 	CmtOutputMode		m_outputMode;
 	CmtOutputSettings	m_outputSettings;
 
-#ifndef _CMT_DLL_IMPORT
+#if !defined(CMT_DLL_IMPORT)
 	//! default constructor, initializes to the given (default) MT settings
 	CmtDataFormat(	const CmtOutputMode mode = CMT_DEFAULT_OUTPUT_MODE,
 					const CmtOutputSettings settings = CMT_DEFAULT_OUTPUT_SETTINGS)
@@ -988,16 +962,6 @@ typedef uint16_t CmtMtTimeStamp;
 #define CMT_DID_BROADCAST				0x80000000
 #define CMT_DID_MASTER					0
 
-#ifdef _CMT_ADD_PRIVATE
-#	include "cmtprivate.h"
-#endif
-
-//! A structure for storing the firmware version
-struct CmtVersion {
-	uint8_t m_major;
-	uint8_t m_minor;
-	uint8_t m_revision;
-};
 
 //! A structure for storing sync in settings
 struct CmtSyncInSettings {
@@ -1005,7 +969,7 @@ struct CmtSyncInSettings {
 	uint16_t	m_skipFactor;
 	uint32_t	m_offset;		//!< Offset in ns
 
-#ifndef _CMT_DLL_IMPORT
+#if !defined(CMT_DLL_IMPORT)
 	//! default constructor, initializes to the given (default) MT settings
 	CmtSyncInSettings(	const uint16_t mode = 0,
 						const uint16_t skip = 0,
@@ -1021,7 +985,7 @@ struct CmtSyncOutSettings {
 	uint32_t	m_offset;		//!< Offset in ns
 	uint32_t	m_pulseWidth;	//!< Pulse width in ns
 
-#ifndef _CMT_DLL_IMPORT
+#if !defined(CMT_DLL_IMPORT)
 	//! default constructor, initializes to the given (default) MT settings
 	CmtSyncOutSettings( const uint16_t mode = 0,
 						const uint16_t skip = 0,
@@ -1051,7 +1015,7 @@ struct CmtDeviceMode {
 	CmtOutputSettings	m_outputSettings;
 	uint16_t		m_sampleFrequency;
 
-#ifndef _CMT_DLL_IMPORT
+#if !defined(CMT_DLL_IMPORT)
 	//! default constructor, initializes to the given (default) MT settings
 	CmtDeviceMode(	const CmtOutputMode mode = CMT_DEFAULT_OUTPUT_MODE,
 					const CmtOutputSettings settings = CMT_DEFAULT_OUTPUT_SETTINGS,
@@ -1091,7 +1055,7 @@ struct CmtDeviceMode2 {
 	uint16_t		m_period;
 	uint16_t		m_skip;
 
-#ifndef _CMT_DLL_IMPORT
+#if !defined(CMT_DLL_IMPORT)
 	//! default constructor, initializes to the given (default) MT settings
 	CmtDeviceMode2(	const CmtOutputMode mode = CMT_DEFAULT_OUTPUT_MODE,
 		const CmtOutputSettings settings = CMT_DEFAULT_OUTPUT_SETTINGS,
@@ -1130,25 +1094,29 @@ struct CmtScenario {
 	uint8_t m_type;		//!< The type of the scenario. When set to 255 in an operation, the 'current' scenario is used.
 	uint8_t m_version;	//!< The version of the scenario.
 	char m_label[CMT_LEN_SCENARIOLABEL+1];		//!< The label of the scenario.
-	//bool m_inSensor;							//!< When set to true, the scenario is available in the sensor
-	char m_filterType;							//!< The type of filter this scenario is intended for '3': XKF-3, '6': XKF-6. \note The value is a character, so XKF-3 is '3', which is hex 0x33
-
-	uint16_t m_hwRevision;
-	char m_productCode[CMT_LEN_SCENARIOLABEL+1];
+	char m_filterType;							//!< The type of the XKF filter this scenario is intended for '3': XKF-3, '6': XKF-6. \note The value is a character, so XKF-3 is '3', which is hex 0x33
+	uint8_t m_filterMajor, m_filterMinor;		//!< The version of the XKF filter this scenario is intended for
 };
 
-#define CMT_MAX_OBJECTS		20
+enum CmtCallbackType {
+	CMT_CALLBACK_LIST_TERMINATOR	= -1,//!< Not a callback function. Used to define the end of a CallbackSelector list
 
-enum CmtCallbackSelector {
-	CMT_CALLBACK_ONMEASUREMENTPREPARE	= 0,	//!< Callback function, called right before sending a GotoMeasurement message
-	CMT_CALLBACK_ONMEASUREMENTSTART		= 1,	//!< Callback function, called right after successfully switching to Measurement mode
-	CMT_CALLBACK_ONMEASUREMENTSTOP		= 2,	//!< Callback function, called right before switching from Measurement mode to Config mode
-	CMT_CALLBACK_ONPOSTPROCESS			= 3,	//!< Callback function, called when a full data bundle is available and has been processed by the CMT. The first void* parameter supplied to this function can be handed as the bundle parameter in cmtData... functions to manipulate the newly received bundle.
-	CMT_CALLBACK_ONBYTESRECEIVED		= 4,	//!< Callback function, called when bytes have been read from a port
-	CMT_CALLBACK_ONMESSAGERECEIVED		= 5,	//!< Callback function, called when a full message has been received from a port
-	CMT_CALLBACK_ONMESSAGESENT			= 6,	//!< Callback function, called when a full message has been sent by a port
-	CMT_CALLBACK_ONMISSINGSAMPLES		= 7		//!< Callback function, called when interpolation mode != 0 and missing samples are detected
+	CMT_CALLBACK_ONMEASUREMENTPREPARE,	//!< Called right before sending a GotoMeasurement message
+	CMT_CALLBACK_ONMEASUREMENTSTART,	//!< Called right after successfully switching to Measurement mode
+	CMT_CALLBACK_ONMEASUREMENTSTOP,		//!< Called right before switching from Measurement mode to Config mode
+	CMT_CALLBACK_ONPOSTPROCESS,			//!< Called when a full data bundle is available and has been processed by the CMT. The first void* parameter supplied to this function can be handed as the bundle parameter in cmtData... The function is intended to manipulate or process the newly received bundle. Manipulation is allowed, but only 'custom data' will be written to a file when logging.
+	CMT_CALLBACK_ONBYTESRECEIVED,		//!< Called when bytes have been read from a port
+	CMT_CALLBACK_ONMESSAGERECEIVED,		//!< Called when a full message has been received from a port
+	CMT_CALLBACK_ONMESSAGESENT,			//!< Called when a full message has been sent by a port
+	CMT_CALLBACK_ONMISSINGSAMPLES,		//!< Called when interpolation mode != 0 and missing samples are detected
+	CMT_CALLBACK_ONWAKEUPRECEIVED,		//!< Called when receiving a wakeup message in config mode. Advise to refresh that port cache as soon as possible
+	CMT_CALLBACK_ONINSTANCE,			//!< Called when a new CMT instance was created or an existing one is about to be destroyed. Also called once for all existing CMT instances when a plugin becomes enabled. If param is non-null, the instance is created, otherwise it is about to be destroyed. The return value of this callback is ignored.
+	CMT_CALLBACK_ONPLAYBACK,				//!< Called when a full data bundle is available and has been processed by the CMT. The first void* parameter supplied to this function can be handed as the bundle parameter in cmtData... The function is intended to process the newly read bundle. Manipulation is allowed, but nothing gets written back to the file.
+
+	CMT_CALLBACK_COUNT					//!< Not a callback function. Used internally for list management
 };
+
+#define CmtCallbackSelector	CmtCallbackType
 
 enum CmtQueueMode {
 	CMT_QM_FIFO	= 0,
@@ -1162,18 +1130,15 @@ struct CmtBinaryData {
 	uint16_t m_portNr;
 };
 
-//#ifdef _WIN32
-	typedef XsensResultValue (__cdecl * CmtCallbackFunction)(int32_t, CmtCallbackSelector, void*, void*);
-//#else
-//    typedef __attribute__((cdecl)) XsensResultValue (* CmtCallbackFunction)(int32_t, CmtCallbackSelector, void*, void*);
-//#endif
+//! \brief Function prototype for Cmt callback functions
+typedef void (__cdecl * CmtCallbackFunction)(int32_t instance, int32_t callbackType, void* param, void* userParam);
 
 //! \brief Structure for storing information about a serial port
 struct CmtPortInfo {
 	uint32_t m_baudrate;	//!< The baudrate at which an Xsens device was detected
 	uint32_t m_deviceId;	//!< The device Id of the detected Xsens device
 	uint16_t m_portNr;		//!< The port number
-	char m_portName[32];		//!< The port name
+	char m_portName[256];		//!< The port name
 #ifdef __cplusplus
 #	ifdef _WIN32
 		//! greater than operator, used for sorting the list
@@ -1184,6 +1149,8 @@ struct CmtPortInfo {
 	bool operator == (const CmtPortInfo& p) const { return m_portNr == p.m_portNr; }
 		//! equality operator, used for finding items in a list
 	bool operator == (const uint16_t port) const { return m_portNr == port; }
+		//! equality operator, used for finding items in a list
+	bool operator == (const char *port) const { return strcmp(m_portName, port) == 0; }
 #	else	// Linux
 		//! greater than operator, used for sorting the list
 	bool operator > (const CmtPortInfo& p) const { return strcmp(m_portName, p.m_portName) > 0; }
@@ -1192,7 +1159,9 @@ struct CmtPortInfo {
 		//! equality operator, used for finding items in a list
 	bool operator == (const CmtPortInfo& p) const { return strcmp(m_portName, p.m_portName) == 0; }
 		//! equality operator, used for finding items in a list
-	bool operator == (const uint16_t port) const { return false; }
+	bool operator == (const uint16_t port) const { (void)port; return false; }
+		//! equality operator, used for finding items in a list
+	bool operator == (const char *port) const { return strcmp(m_portName, port) == 0; }
 #	endif // ifdef _WIN32/Linux
 #endif
 };
@@ -1204,8 +1173,7 @@ struct CmtRawData {
 	CmtShortVector	m_acc,m_gyr,m_mag;
 	uint16_t	m_temp;
 };
-struct CmtRawGpsData {
-	uint16_t	m_pressure;
+struct CmtGpsPvtData {	uint16_t	m_pressure;
 	uint8_t		m_pressureAge;
 	uint32_t	m_itow;
 	int32_t		m_latitude;
@@ -1219,20 +1187,10 @@ struct CmtRawGpsData {
 	uint32_t	m_sacc;
 	uint8_t	m_gpsAge;
 };
+#define CmtRawGpsData	CmtGpsPvtData		//!< obsolete, use CmtGpsPvtData instead
 struct CmtRawPressureData {
 	uint16_t	m_pressure;
 	uint8_t		m_pressureAge;
-	uint32_t	m_itow;
-	int32_t		m_latitude;
-	int32_t		m_longitude;
-	int32_t		m_height;
-	int32_t		m_veln;
-	int32_t		m_vele;
-	int32_t		m_veld;
-	uint32_t	m_hacc;
-	uint32_t	m_vacc;
-	uint32_t	m_sacc;
-	uint8_t	m_gpsAge;
 };
 struct CmtAnalogInData
 {
@@ -1267,7 +1225,7 @@ struct CmtGpsStatus {
 	CmtGpsSatelliteInfo m_svInfo[CMT_MAX_SVINFO];
 };
 
-typedef uint64_t CmtTimeStamp;
+typedef int64_t CmtTimeStamp;
 
 #define CMT_AUTO_SAVE_FRAMES	5000
 #define CMT_FILE_LAST_FRAME		0xFFFFFFFF
@@ -1276,14 +1234,16 @@ typedef uint64_t CmtTimeStamp;
 #define CMT_BID_INVALID			(const uint8_t)0xFE
 #define CMT_MID_REQEMTS			(const uint8_t)0x90
 #define CMT_MID_EMTSDATA		(const uint8_t)0x91
-#define CMT_EMTS_SIZE			1056
+#define CMT_EMTS_SIZE			1320
 
-#define CMT_STATUSFLAG_SELFTEST						0x01
+#define CMT_STATUSFLAG_SELFTEST_OK					0x01
 #define CMT_STATUSFLAG_XKFVALID						0x02
 #define CMT_STATUSFLAG_GPSVALID						0x04
 #define CMT_STATUSFLAG_NOROTATION_MASK				0x18
 #define CMT_STATUSFLAG_NOROTATION 					0x18
 #define CMT_STATUSFLAG_NOROTATION_ABORTED 			0x10
 #define CMT_STATUSFLAG_NOROTATION_SAMPLES_REJECTED 	0x08
+
+#define CMT_MAX_VPORTNAME_LEN	32
 
 #endif

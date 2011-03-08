@@ -1,3 +1,4 @@
+#ifndef XSENS_MONOLITHIC
 /*! \file
 	\brief	Contains the CMT Packet interface
 
@@ -22,18 +23,18 @@
 	\par 2006-07-21, v0.1.0
 	\li Job Mulder:	Updated file for release 0.1.0
 */
+#endif
+#ifndef CMTPACKET_H
+#define CMTPACKET_H
 
-#ifndef _CMTPACKET_H_2006_05_10
-#define _CMTPACKET_H_2006_05_10
-
-#ifndef _CMT_MONOLITHIC
+#ifndef XSENS_MONOLITHIC
 #	include "cmtdef.h"
 #	include "cmt2.h"
 #endif
 
+
 namespace xsens {
 
-class Cmt4;	// required by DLL for supporting advanced features
 
 	//! Indicates that a data item is not available in the packet
 #define CMT_DATA_ITEM_NOT_AVAILABLE		65535
@@ -65,29 +66,39 @@ protected:
 		uint16_t m_velNEDorNWU;
 		uint16_t m_status;
 		uint16_t m_sc;
+		uint16_t m_utcTime;
+		uint16_t m_utcNano;
+		uint16_t m_utcYear;
+		uint16_t m_utcMonth;
+		uint16_t m_utcDay;
+		uint16_t m_utcHour;
+		uint16_t m_utcMinute;
+		uint16_t m_utcSecond;
+		uint16_t m_utcValid;
 		uint16_t m_acc_g;
-		uint16_t m_rawGpsData;
-		uint16_t m_rawGpsPressure;
-		uint16_t m_rawGpsPressureAge;
-		uint16_t m_rawGpsGpsData;
-		uint16_t m_rawGpsItow;
-		uint16_t m_rawGpsLatitude;
-		uint16_t m_rawGpsLongitude;
-		uint16_t m_rawGpsHeight;
-		uint16_t m_rawGpsVeln;
-		uint16_t m_rawGpsVele;
-		uint16_t m_rawGpsVeld;
-		uint16_t m_rawGpsHacc;
-		uint16_t m_rawGpsVacc;
-		uint16_t m_rawGpsSacc;
-		uint16_t m_rawGpsGpsAge;
+		uint16_t m_gpsPvtData;
+		uint16_t m_gpsPvtPressure;
+		uint16_t m_gpsPvtPressureAge;
+		uint16_t m_gpsPvtGpsData;
+		uint16_t m_gpsPvtItow;
+		uint16_t m_gpsPvtLatitude;
+		uint16_t m_gpsPvtLongitude;
+		uint16_t m_gpsPvtHeight;
+		uint16_t m_gpsPvtVeln;
+		uint16_t m_gpsPvtVele;
+		uint16_t m_gpsPvtVeld;
+		uint16_t m_gpsPvtHacc;
+		uint16_t m_gpsPvtVacc;
+		uint16_t m_gpsPvtSacc;
+		uint16_t m_gpsPvtGpsAge;
 		uint16_t m_size;
+		uint16_t m_doubleBoundary;
 	}*	m_infoList;
 	CmtDataFormat*	m_formatList;	//!< A list of the formats of the data items
 	bool m_xm;						//!< Indicates that xbus-formatting is used
 
 public:
-	uint16_t	m_itemCount;	//!< The number of data items in the message
+	uint16_t		m_itemCount;	//!< The number of data items in the message
 	Message			m_msg;			//!< The message
 	TimeStamp		m_rtc;			//!< Sample time in ms, based on the sample counter
 	TimeStamp		m_toa;			//!< Time of arrival
@@ -161,14 +172,21 @@ public:
 	bool containsRawData(const uint16_t index=0) const;
 		//! Add/update Raw Data for the item
 	bool updateRawData(const CmtRawData& data, const uint16_t index=0);
-	/*! \brief Return the Raw Gps data component of a data item.
+	/*! \brief Return the Gps PVT data component of a data item.
 	\param index The index of the item of which the data should be returned.
 	*/
-	CmtRawGpsData getRawGpsData(const uint16_t index=0) const;
-	//! Check if data item contains Raw Gps Data
-	bool containsRawGpsData(const uint16_t index=0) const;
-	//! Add/update Raw Gps Data for the item
-	bool updateRawGpsData(const CmtRawGpsData& data, const uint16_t index=0);
+	CmtGpsPvtData getGpsPvtData(const uint16_t index=0) const;
+	//! Check if data item contains Gps PVT Data
+	bool containsGpsPvtData(const uint16_t index=0) const;
+	//! Add/update Gps PVT Data for the item
+	bool updateGpsPvtData(const CmtGpsPvtData& data, const uint16_t index=0);
+
+	//! This function is obsolete, use getGpsPvtData instead. This function will be removed in future versions of the MT SDK. \see getGpsPvtData
+	#define	getRawGpsData getGpsPvtData
+	//! This function is obsolete, use containsGpsPvtData instead. This function will be removed in future versions of the MT SDK. \see containsGpsPvtData
+	#define	containsRawGpsData containsGpsPvtData
+	//! This function is obsolete, use updateGpsPvtData instead. This function will be removed in future versions of the MT SDK. \see updateGpsPvtData
+	#define	updateRawGpsData updateGpsPvtData
 
 	/*! \brief Return the Raw Pressure Data component of a data item.
 	\param index The index of the item of which the data should be returned.
@@ -314,7 +332,18 @@ public:
 		//! Check if data item contains Sample Counter
 	bool containsSampleCounter(const uint16_t index=0) const;
 		//! Add/update Sample Counter for all items
-	bool updateSampleCounter(uint16_t counter, const uint16_t index=0);
+	bool updateSampleCounter(const uint16_t counter, const uint16_t index=0);
+
+	/*! \brief Return the UTC Time component of the packet.
+	
+		\param index The index of the item of which the data should be returned. (ignored)
+	*/
+	CmtUtcTime getUtcTime(const uint16_t index=0) const;
+		//! Check if data item contains UTC Time
+	bool containsUtcTime(const uint16_t index=0) const;
+		//! Add/update UTC Time for all items
+	bool updateUtcTime(const CmtUtcTime& data, const uint16_t index=0);
+
 	/*! \brief Return the RTC of the packet.
 	
 		\param index The index of the item of which the data should be returned. (ignored)
@@ -332,12 +361,12 @@ public:
 		//! Add/update XKF-3 Acc-G data for the item
 	bool updateAccG(const CmtVector& g, const uint16_t index=0);
 
-	#ifdef _CMT_DLL_EXPORT
+	#ifdef CMT_DLL_EXPORT
 		//! Interpolate so resulting packet is (1-f)*pa + pb OR pb if pa and pb are non-matching types
-	void interpolate(const Packet& pa, const Packet& pb, const double f);
+	void interpolate(const Packet& pa, const Packet& pb, const double f, int32_t interpolationMode = 1);
 	#endif
 };
 
 }	// end of xsens namespace
 
-#endif	// _CMTPACKET_H_2006_05_10
+#endif	// CMTPACKET_H

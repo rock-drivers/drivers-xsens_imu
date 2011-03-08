@@ -40,7 +40,7 @@
 
 namespace xsens {
 
-#ifdef _LOG_CMT_SCAN
+#ifdef LOG_CMT_SCAN
 #	define SCANLOG		CMTLOG
 #else
 #	define SCANLOG(...)
@@ -90,10 +90,10 @@ bool cmtScanPort(CmtPortInfo& portInfo, uint32_t baud, uint32_t singleScanTimeou
 		{
 		default:
 		case CMT_BAUD_RATE_115K2:
-			baudrate = CMT_BAUD_RATE_460K8; break;
-		case CMT_BAUD_RATE_460K8:
 			baudrate = CMT_BAUD_RATE_921K6; break;
 		case CMT_BAUD_RATE_921K6:
+			baudrate = CMT_BAUD_RATE_460K8; break;
+		case CMT_BAUD_RATE_460K8:
 			baudrate = CMT_BAUD_RATE_230K4; break;
 		case CMT_BAUD_RATE_230K4:
 			baudrate = CMT_BAUD_RATE_57K6; break;
@@ -110,9 +110,9 @@ bool cmtScanPort(CmtPortInfo& portInfo, uint32_t baud, uint32_t singleScanTimeou
 	return false;
 }
 
-bool cmtScanPorts(List<CmtPortInfo>& ports,uint32_t baudrate, uint32_t singleScanTimeout, uint32_t scanTries)
+bool cmtScanPorts(List<CmtPortInfo>& ports,uint32_t baudrate, uint32_t singleScanTimeout, uint32_t scanTries, bool ignoreNonXsensDevices)
 {
-	CmtPortInfo current = {0,0,0};
+	CmtPortInfo current = {0,0,0,""};
 	ports.clear();	// clear the list
 #ifdef _WIN32
 	HDEVINFO hDevInfo;
@@ -146,7 +146,7 @@ bool cmtScanPorts(List<CmtPortInfo>& ports,uint32_t baudrate, uint32_t singleSca
 		// success or an unknown failure.
 		//
 #if 1
-		if (SetupDiGetDeviceRegistryProperty(hDevInfo,
+		if (SetupDiGetDeviceRegistryPropertyA(hDevInfo,
 						&DeviceInfoData,
 						SPDRP_MFG,
 						&DataT,
@@ -154,34 +154,37 @@ bool cmtScanPorts(List<CmtPortInfo>& ports,uint32_t baudrate, uint32_t singleSca
 						256,
 						NULL))
 		{
-			// on failure, this is not an Xsens Device
-			// on success, we need to check if the device is an Xsens Device
-			//if (_strnicmp(buffer,"xsens",5))
-			//	scan = true;
-			//else
-			if (!_strnicmp(buffer,"(Standard port types)",20))
-				continue;
-			if (_strnicmp(buffer,"xsens",5))	// if this is NOT an xsens device, treat it as a BT device
+			if (ignoreNonXsensDevices)
 			{
-				isBT = true;
-				if (_strnicmp(buffer,"WIDCOMM",7))	// if this is NOT a WIDCOMM (Ezureo / TDK stack), skip it
+				// on failure, this is not an Xsens Device
+				// on success, we need to check if the device is an Xsens Device
+				//if (_strnicmp(buffer,"xsens",5))
+				//	scan = true;
+				//else
+				if (!_strnicmp(buffer,"(Standard port types)",20))
 					continue;
+				if (_strnicmp(buffer,"xsens",5))	// if this is NOT an xsens device, treat it as a BT device
+				{
+					isBT = true;
+					if (_strnicmp(buffer,"WIDCOMM",7))	// if this is NOT a WIDCOMM (Ezureo / TDK stack), skip it
+						continue;
+				}
 			}
 		}
 #endif
-		// we found an Xsens Device, add its port nr to the list
-		//Get the registry key which stores the ports settings
+		// we found an Xsens Device or at least something that is not ignored, add its port nr to the list
+		// Get the registry key which stores the ports settings
 		HKEY hDeviceKey = SetupDiOpenDevRegKey(hDevInfo, &DeviceInfoData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_QUERY_VALUE);
 		if (hDeviceKey != INVALID_HANDLE_VALUE)
 		{
-			//Read in the name of the port
+			// Read in the name of the port
 			char pszPortName[256];
 			DWORD dwSize = 256;
 			DWORD dwType = 0;
-			if ((RegQueryValueEx(hDeviceKey, "PortName", NULL, &dwType, (LPBYTE) pszPortName, &dwSize) == ERROR_SUCCESS) && (dwType == REG_SZ))
+			if ((RegQueryValueExA(hDeviceKey, "PortName", NULL, &dwType, (LPBYTE) pszPortName, &dwSize) == ERROR_SUCCESS) && (dwType == REG_SZ))
 			{
-				//If it looks like "COMX" then
-				//add it to the array which will be returned
+				// If it looks like "COMX" then
+				// add it to the array which will be returned
 				int32_t nLen = (int32_t) strlen(pszPortName);
 				if (nLen > 3)
 				{
@@ -200,7 +203,7 @@ bool cmtScanPorts(List<CmtPortInfo>& ports,uint32_t baudrate, uint32_t singleSca
 				}
 			}
 		}
-		//Close the key now that we are finished with it
+		// Close the key now that we are finished with it
 		RegCloseKey(hDeviceKey);
 	}
 
@@ -238,6 +241,8 @@ bool cmtScanPorts(List<CmtPortInfo>& ports,uint32_t baudrate, uint32_t singleSca
 		ports.append(current);
 	}
 #else
+	(void)ignoreNonXsensDevices;
+
 	DIR *dir;
 	struct dirent *entry;
 	

@@ -31,7 +31,7 @@
  *
  ****************************************************************************
  *
- *  Version 0.1.10
+ *  Version 0.1.11
  *
  *  The ANSI C standard committee, for the C99 standard, specified the
  *  inclusion of a new standard include file called stdint.h.  This is
@@ -183,27 +183,31 @@
 
 #include <stddef.h>
 #include <limits.h>
-#include <signal.h>
 
 /*
  *  For gcc with _STDINT_H, fill in the PRINTF_INT*_MODIFIER macros, and
  *  do nothing else.  On the Mac OS X version of gcc this is _STDINT_H_.
  */
 
-//#if ((defined(__STDC__) && __STDC__ && __STDC_VERSION__ >= 199901L) || (defined (__WATCOMC__) && (defined (_STDINT_H_INCLUDED) || __WATCOMC__ >= 1250)) || (defined(__GNUC__) && (defined(_STDINT_H) || defined(_STDINT_H_)) )) && !defined (_PSTDINT_H_INCLUDED)
-#if (\
-	(defined(__STDC__) && __STDC__ && __STDC_VERSION__ >= 199901L)\
-	|| (defined (__WATCOMC__) && (defined (_STDINT_H_INCLUDED) || __WATCOMC__ >= 1250))\
-	|| defined(__GNUC__)\
-	) && !defined (_PSTDINT_H_INCLUDED)
-
+#if (defined(__STDC__) && __STDC__ && __STDC_VERSION__ >= 199901L) || (defined (__WATCOMC__) && __WATCOMC__ >= 1250) || (defined(__GNUC__) && __GNUC__ > 2) || (defined(_MSC_VER) && _MSC_VER >= 1600)
 #include <stdint.h>
+#endif
+
+#if  (defined (_STDINT_H_INCLUDED) || defined (_STDINT) || defined (_STDINT_H) || defined (_STDINT_H_)) && !defined (_PSTDINT_H_INCLUDED)
 #define _PSTDINT_H_INCLUDED
 # ifndef PRINTF_INT64_MODIFIER
-#  define PRINTF_INT64_MODIFIER "ll"
+#  if __WORDSIZE == 64
+#   define PRINTF_INT64_MODIFIER "l"
+#  else
+#   define PRINTF_INT64_MODIFIER "ll"
+#  endif
 # endif
 # ifndef PRINTF_INT32_MODIFIER
-#  define PRINTF_INT32_MODIFIER "l"
+#  if (LONG_MAX == INT32_MAX) && !defined(__GNUC__)
+#   define PRINTF_INT32_MODIFIER "l"
+#  else
+#   define PRINTF_INT32_MODIFIER ""
+#  endif
 # endif
 # ifndef PRINTF_INT16_MODIFIER
 #  define PRINTF_INT16_MODIFIER "h"
@@ -382,18 +386,18 @@
 # define UINT32_MAX (0xffffffffUL)
 #endif
 #ifndef uint32_t
-#if (ULONG_MAX == UINT32_MAX) || defined (S_SPLINT_S)
+#if (UINT_MAX == UINT32_MAX) && !defined (S_SPLINT_S)
+typedef unsigned int uint32_t;
+# ifndef PRINTF_INT32_MODIFIER
+#  define PRINTF_INT32_MODIFIER ""
+# endif
+# define UINT32_C(v) v ## U
+#elif (ULONG_MAX == UINT32_MAX) || defined (S_SPLINT_S)
   typedef unsigned long uint32_t;
 # define UINT32_C(v) v ## UL
 # ifndef PRINTF_INT32_MODIFIER
 #  define PRINTF_INT32_MODIFIER "l"
 # endif
-#elif (UINT_MAX == UINT32_MAX)
-  typedef unsigned int uint32_t;
-# ifndef PRINTF_INT32_MODIFIER
-#  define PRINTF_INT32_MODIFIER ""
-# endif
-# define UINT32_C(v) v ## U
 #elif (USHRT_MAX == UINT32_MAX)
   typedef unsigned short uint32_t;
 # define UINT32_C(v) ((unsigned short) (v))
@@ -412,7 +416,13 @@
 # define INT32_MIN INT32_C(0x80000000)
 #endif
 #ifndef int32_t
-#if (LONG_MAX == INT32_MAX) || defined (S_SPLINT_S)
+#if (INT_MAX == INT32_MAX) && defined (__GNUC__) && (__GNUC__ > 3)
+  typedef signed int int32_t;
+# define INT32_C(v) v
+# ifndef PRINTF_INT32_MODIFIER
+#  define PRINTF_INT32_MODIFIER ""
+# endif
+#elif (LONG_MAX == INT32_MAX) || defined (S_SPLINT_S)
   typedef signed long int32_t;
 # define INT32_C(v) v ## L
 # ifndef PRINTF_INT32_MODIFIER
@@ -457,7 +467,16 @@
 #endif
 
 #if !defined (stdint_int64_defined)
-# if defined(__GNUC__)
+# if defined(__GNUC__) && __WORDSIZE == 64
+#  define stdint_int64_defined
+   __extension__ typedef long int64_t;
+   __extension__ typedef unsigned long uint64_t;
+#  define UINT64_C(v) v ## UL
+#  define  INT64_C(v) v ## L
+#  ifndef PRINTF_INT64_MODIFIER
+#   define PRINTF_INT64_MODIFIER "l"
+#  endif
+#elif defined(__GNUC__)
 #  define stdint_int64_defined
    __extension__ typedef long long int64_t;
    __extension__ typedef unsigned long long uint64_t;
@@ -622,12 +641,24 @@
  *  stdint.h.
  */
 
+#ifndef int_fast8_t
 typedef   int_least8_t   int_fast8_t;
+#endif
+#ifndef uint_fast8_t
 typedef  uint_least8_t  uint_fast8_t;
+#endif
+#ifndef int_fast16_t
 typedef  int_least16_t  int_fast16_t;
+#endif
+#ifndef uint_fast16_t
 typedef uint_least16_t uint_fast16_t;
+#endif
+#ifndef int_fast32_t
 typedef  int_least32_t  int_fast32_t;
+#endif
+#ifndef uint_fast32_t
 typedef uint_least32_t uint_fast32_t;
+#endif
 #define  UINT_FAST8_MAX  UINT_LEAST8_MAX
 #define   INT_FAST8_MAX   INT_LEAST8_MAX
 #define UINT_FAST16_MAX UINT_LEAST16_MAX
@@ -713,8 +744,8 @@ typedef uint_least32_t uint_fast32_t;
 #  ifndef UINTPTR_C
 #    define UINTPTR_C(x)                stdint_intptr_glue3(UINT,stdint_intptr_bits,_C)(x)
 #  endif
-  typedef stdint_intptr_glue3(uint,stdint_intptr_bits,_t)* uintptr_t;
-  typedef stdint_intptr_glue3( int,stdint_intptr_bits,_t)*  intptr_t;
+  typedef stdint_intptr_glue3(uint,stdint_intptr_bits,_t) uintptr_t;
+  typedef stdint_intptr_glue3( int,stdint_intptr_bits,_t)  intptr_t;
 # else
 /* TODO -- This following is likely wrong for some platforms, and does
    nothing for the definition of uintptr_t. */
@@ -732,3 +763,77 @@ typedef uint_least32_t uint_fast32_t;
 #endif
 
 #endif
+
+#ifndef XSENS_MONOLITHIC
+
+#if defined (__TEST_PSTDINT_FOR_CORRECTNESS)
+
+/* 
+ *  Please compile with the maximum warning settings to make sure macros are not
+ *  defined more than once.
+ */
+ 
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+ 
+#define glue3_aux(x,y,z) x ## y ## z
+#define glue3(x,y,z) glue3_aux(x,y,z)
+
+#define DECLU(bits) glue3(uint,bits,_t) glue3(u,bits,=) glue3(UINT,bits,_C) (0);
+#define DECLI(bits) glue3(int,bits,_t) glue3(i,bits,=) glue3(INT,bits,_C) (0);
+
+#define DECL(us,bits) glue3(DECL,us,) (bits)
+
+#define TESTUMAX(bits) glue3(u,bits,=) glue3(~,u,bits); if (glue3(UINT,bits,_MAX) glue3(!=,u,bits)) printf ("Something wrong with UINT%d_MAX\n", bits)
+ 
+int main () {
+	DECL(I,8)
+	DECL(U,8)
+	DECL(I,16)
+	DECL(U,16)
+	DECL(I,32)
+	DECL(U,32)
+#ifdef INT64_MAX
+	DECL(I,64)
+	DECL(U,64)
+#endif
+	intmax_t imax = INTMAX_C(0);
+	uintmax_t umax = UINTMAX_C(0);
+	char str0[256], str1[256];
+
+	sprintf (str0, "%d %x\n", 0, ~0);
+	
+	sprintf (str1, "%d %x\n",  i8, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with i8 : %s\n", str1);
+	sprintf (str1, "%u %x\n",  u8, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with u8 : %s\n", str1);
+	sprintf (str1, "%d %x\n",  i16, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with i16 : %s\n", str1);
+	sprintf (str1, "%u %x\n",  u16, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with u16 : %s\n", str1);	
+	sprintf (str1, "%" PRINTF_INT32_MODIFIER "d %x\n",  i32, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with i32 : %s\n", str1);
+	sprintf (str1, "%" PRINTF_INT32_MODIFIER "u %x\n",  u32, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with u32 : %s\n", str1);
+#ifdef INT64_MAX	
+	sprintf (str1, "%" PRINTF_INT64_MODIFIER "d %x\n",  i64, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with i64 : %s\n", str1);
+#endif
+	sprintf (str1, "%" PRINTF_INTMAX_MODIFIER "d %x\n",  imax, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with imax : %s\n", str1);
+	sprintf (str1, "%" PRINTF_INTMAX_MODIFIER "u %x\n",  umax, ~0);
+	if (0 != strcmp (str0, str1)) printf ("Something wrong with umax : %s\n", str1);	
+	
+	TESTUMAX(8);
+	TESTUMAX(16);
+	TESTUMAX(32);
+#ifdef INT64_MAX
+	TESTUMAX(64);
+#endif
+
+	return EXIT_SUCCESS;
+}
+
+#endif
+#endif // #ifndef XSENS_MONOLITHIC

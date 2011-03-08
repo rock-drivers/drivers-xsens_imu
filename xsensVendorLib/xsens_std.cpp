@@ -52,7 +52,7 @@ const char* xsensResultText(const XsensResultValue result)
 		case XRV_INVALIDINSTANCE:		return "Invalid instance called";
 		case XRV_DATACORRUPT:			return "Data-source corrupt";
 		case XRV_READINITFAILED:		return "Failure during reading of settings. File may be old or corrupt.";
-		case XRV_NOXMFOUND:				return "Could not find any Moven-compatible hardware, check connections and Xbus Master LEDs";
+		case XRV_NOXMFOUND:				return "Could not find any MVN-compatible hardware, check connections and Xbus Master LEDs";
 		case XRV_ONLYONEXMFOUND:		return "Found only one responding Xbus Master, check connections and Xbus Master LEDs";
 		case XRV_MTCOUNTZERO:			return "No sensors found, check cables";
 		case XRV_MTLOCATIONINVALID:		return "One or more sensors are not where they were expected, check locations";
@@ -75,6 +75,10 @@ const char* xsensResultText(const XsensResultValue result)
 
 		case XRV_VERSION_TOO_LOW:		return "The version of the object is too low for the requested operation";
 		case XRV_VERSION_PROBLEM:		return "The object has an unrecognized version, so it's not safe to perform the operation";
+
+		case XRV_DEVICEERROR:			return "The device generated an error, try updating the firmware";
+
+		case XRV_ABORTED:				return "The process was aborted by an external event";
 
 		default:						return "!!Undefined Result Value!!";
 	}

@@ -1,3 +1,4 @@
+#ifndef XSENS_MONOLITHIC
 /*! \file
 	\brief	Contains the CMT Message interface
 
@@ -16,11 +17,11 @@
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 	PARTICULAR PURPOSE.
 */
+#endif
+#ifndef CMTMESSAGE_H
+#define CMTMESSAGE_H
 
-#ifndef _CMTMESSAGE_H_2006_05_24
-#define _CMTMESSAGE_H_2006_05_24
-
-#ifndef _CMT_MONOLITHIC
+#ifndef XSENS_MONOLITHIC
 #	include "cmtdef.h"
 #	include "cmt1.h"
 #endif
@@ -66,17 +67,6 @@ struct MessageHeader {
 	/*! \cond NODOXYGEN */	__attribute__((__packed__))	/*! \endcond */;
 #endif
 
-#if defined(_DEBUG) && defined(_CMT_CHECK_MSG_DATA_INTEGRITY)
-	#define CMT_CHECKVAR	uint32_t m_checkvar;
-	#define CMT_CHECKVAL	10101010
-	#define CMT_CHECKASSIGN	m_checkvar = CMT_CHECKVAL;
-	#define CMT_CHECKASSERT	if (m_checkvar != CMT_CHECKVAL) throw "Message assertion failed!";
-#else
-	#define CMT_CHECKVAR
-	#define CMT_CHECKVAL
-	#define CMT_CHECKASSIGN
-	#define CMT_CHECKASSERT
-#endif
 
 #define swapEndian16(src) (((src) >> 8) | ((src) << 8))
 #define swapEndian32(src) (((src) >> 24) | ((src) >> 8 & 0xFF00) | ((src) << 8 & 0xFF0000) | ((src) << 24))
@@ -85,7 +75,6 @@ struct MessageHeader {
 //! \brief Class for storing a single message.
 class Message {
 protected:
-	CMT_CHECKVAR
 
 		//! The message header is the data buffer with interpretation
 	MessageHeader* m_buffer;
@@ -312,4 +301,4 @@ public:
 
 }; // end of xsens namespace
 
-#endif	// _CMTMESSAGE_H_2006_05_24
+#endif	// CMTMESSAGE_H

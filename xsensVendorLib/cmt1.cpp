@@ -3,18 +3,18 @@
 	For information about objects in this file, see the appropriate header:
 	\ref Cmt1.h
 
-	\section FileCopyright Copyright Notice 
+	\section FileCopyright Copyright Notice
 	Copyright (C) Xsens Technologies B.V., 2006.  All rights reserved.
-	
+
 	This source code is intended for use only by Xsens Technologies BV and
 	those that have explicit written permission to use it from
 	Xsens Technologies BV.
-	
+
 	THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
 	KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 	PARTICULAR PURPOSE.
-	
+
 	\section FileChangelog	Changelog
 	\par 2006-04-12, v0.0.1
 	\li Job Mulder:	Created
@@ -29,16 +29,16 @@
 #	include <sys/ioctl.h>	// ioctl
 #	include <fcntl.h>		// open, O_RDWR
 #	include <string.h>		// strcpy
-#	include <malloc.h>		// malloc
-#   include <sys/param.h>
+#	include <sys/param.h>
+#	include <stdarg.h>
 // We have to redefine PATH_MAX from 4096 to CMT_MAX_FILENAME_LENGTH to mainain compatibility
 // The PATH_MAX definition is used by realpath() to determine the maximum path length. According
 // to the realpath (3) man page, the function is best avoided and it might be necessary to
 // write a custom function for it (couldn't find a proper replacement).
-#   undef PATH_MAX
-#   define PATH_MAX CMT_MAX_FILENAME_LENGTH
-#   include <stdlib.h>
+#	undef PATH_MAX
+#	define PATH_MAX CMT_MAX_FILENAME_LENGTH
 #else
+#	include <winbase.h>
 #   include <io.h>
 #endif
 
@@ -59,7 +59,6 @@
 #	define FTELL()		ftello(m_handle)
 #endif
 
-// The namespace of all Xsens software since 2006.
 namespace xsens {
 
 #ifndef _WIN32
@@ -83,14 +82,13 @@ int _wcsnicmp(const wchar_t* s1, const wchar_t* s2,int count)
 }
 #endif
 
-
-#if defined(_DEBUG) || defined(_LOG_ALWAYS)
-	#if !defined(_LOG_TO_DBVIEW)
-		#ifdef _LOG_TO_STDOUT
+#if defined(XSENS_DEBUG) || defined(CMT_LOG_ALWAYS)
+	#if !defined(LOG_TO_DBVIEW)
+		#ifdef LOG_TO_STDOUT
 		#else	// !dbview && !stdout
 			FILE* debug_log_fp = NULL;
 			int32_t debug_log_valid = 0;
-			
+
 			FILE* debug_qlog_fp = NULL;
 			int32_t debug_qlog_valid = 0;
 		#endif
@@ -99,12 +97,12 @@ int _wcsnicmp(const wchar_t* s1, const wchar_t* s2,int count)
 // write to a log file/screen/debug-stream
 void CMTLOG(const char *str, ...)
 {
-	#ifdef _LOG_TO_STDOUT
+	#ifdef LOG_TO_STDOUT
 		va_list ptr;
 		va_start(ptr,str);
 		vprintf(str,ptr);
 	#else
-	#ifdef _LOG_TO_DBVIEW
+	#ifdef LOG_TO_DBVIEW
 		char buf[2048];
 
 		va_list ptr;
@@ -127,10 +125,18 @@ void CMTLOG(const char *str, ...)
 
 			va_list ptr;
 			va_start(ptr,str);
-			int32_t sz = vsprintf_s(buf,str,ptr);
+#ifdef _WIN32
+			vsprintf_s(buf,str,ptr);
+#else
+			vsprintf(buf,str,ptr);
+#endif
 
 			uint32_t nw = getTimeOfDay();
-			fprintf(debug_log_fp,"%5u.%03u %s",nw/1000,nw%1000,buf);
+#ifdef XSENS_THREAD_H
+			fprintf(debug_log_fp,"%5u.%03u [%d] %s", nw/1000, nw%1000, cmtGetCurrentThreadId(), buf);
+#else
+			fprintf(debug_log_fp,"%5u.%03u %s", nw/1000, nw%1000, buf);
+#endif
 			//fwrite(buf,1,sz,debug_log_fp);
 			fflush(debug_log_fp);
 		}
@@ -140,7 +146,7 @@ void CMTLOG(const char *str, ...)
 #endif
 
 // maybe log to nothing at this level
-#ifdef _LOG_CMT1
+#ifdef LOG_CMT1
 	#define CMT1LOG		CMTLOG
 #else
 	#define CMT1LOG(...)
@@ -162,7 +168,7 @@ Cmt1s::Cmt1s() :
 	m_endTime = 0;
 	m_baudrate = 0;
 
-	#ifdef _LOG_RX_TX
+	#ifdef LOG_RX_TX
 		rx_log = NULL;
 		tx_log = NULL;
 	#endif
@@ -179,7 +185,7 @@ Cmt1s::~Cmt1s()
 // Close the serial communication port.
 XsensResultValue Cmt1s::close (void)
 {
-	#ifdef _LOG_RX_TX
+	#ifdef LOG_RX_TX
 		if (rx_log != NULL)
 			fclose(rx_log);
 		if (tx_log != NULL)
@@ -189,7 +195,7 @@ XsensResultValue Cmt1s::close (void)
 	#endif
 	if (!m_isOpen)
 		return m_lastResult = XRV_NOPORTOPEN;
-	
+
 	#ifdef _WIN32
 		::FlushFileBuffers(m_handle);
 		// read all data before closing the handle, a Flush is not enough for FTDI devices unfortunately
@@ -201,7 +207,7 @@ XsensResultValue Cmt1s::close (void)
 			cto.ReadTotalTimeoutMultiplier = 0;
 			::SetCommTimeouts(m_handle,&cto);
 			char buffer[1024];
-			uint32_t length;
+			DWORD length;
 			do {
 				::ReadFile(m_handle, buffer, 1024, &length, NULL);
 			} while (length > 0);
@@ -288,6 +294,21 @@ XsensResultValue Cmt1s::flushData (void)
 	return (m_lastResult = XRV_OK);
 }
 
+//! Return the baudrate that is currently being used by the port
+uint32_t Cmt1s::getBaudrate(void) const { return m_baudrate; }
+//! Return the handle of the port
+HANDLE Cmt1s::getHandle(void) const { return m_handle; }
+//! Retrieve the port number that was last successfully opened.
+uint16_t Cmt1s::getPortNr (void) const { return m_port; }
+//! Retrieve the port name that was last successfully opened.
+void Cmt1s::getPortName(char *portname) const { sprintf(portname, "%s", m_portname); }
+//! Return the error code of the last operation.
+XsensResultValue Cmt1s::getLastResult(void) const { return m_lastResult; }
+//! Return the current timeout value
+uint32_t Cmt1s::getTimeout (void) const { return m_timeout; }
+//! Return whether the communication port is open or not.
+bool Cmt1s::isOpen (void) const { return m_isOpen; }
+
 //////////////////////////////////////////////////////////////////////////////////////////
 // Open a communication channel to the given serial port name.
 XsensResultValue Cmt1s::open(  const char *portName,
@@ -305,13 +326,13 @@ XsensResultValue Cmt1s::open(  const char *portName,
 		return (m_lastResult = XRV_ALREADYOPEN);
 	}
 	m_baudrate = baudRate;
-	
+
 #ifdef _WIN32
 	char winPortName[32];
-	
+
 	// Open port
 	sprintf(winPortName, "\\\\.\\%s", portName);
-	m_handle = CreateFile(winPortName, GENERIC_READ | GENERIC_WRITE, 0, NULL,
+	m_handle = CreateFileA(winPortName, GENERIC_READ | GENERIC_WRITE, 0, NULL,
 									OPEN_EXISTING, 0, NULL);
 	if (m_handle == INVALID_HANDLE_VALUE)
 	{
@@ -329,14 +350,14 @@ XsensResultValue Cmt1s::open(  const char *portName,
 	m_commState.Parity = NOPARITY;				// Setup the Parity
 	m_commState.ByteSize = 8;					// Setup the data bits
 	m_commState.StopBits = TWOSTOPBITS;			// Setup the stop bits
-	m_commState.fDsrSensitivity = FALSE;		// Setup the flow control 
+	m_commState.fDsrSensitivity = FALSE;		// Setup the flow control
 	m_commState.fOutxCtsFlow = FALSE;			// NoFlowControl:
 	m_commState.fOutxDsrFlow = FALSE;
 	m_commState.fOutX = FALSE;
 	m_commState.fInX = FALSE;
 	if (!SetCommState(m_handle, (LPDCB)&m_commState)) {// Set new state
 		// Bluetooth ports cannot always be opened with 2 stopbits
-		// Now try to open port with 1 stopbit. 
+		// Now try to open port with 1 stopbit.
 		m_commState.StopBits = ONESTOPBIT;
 		if (!SetCommState(m_handle, (LPDCB)&m_commState)) {
 			CloseHandle(m_handle);
@@ -360,6 +381,8 @@ XsensResultValue Cmt1s::open(  const char *portName,
 	//PurgeComm(m_handle, PURGE_TXCLEAR | PURGE_RXCLEAR);
 	PurgeComm(m_handle, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
 #else // !_WIN32
+	(void)readBufSize;
+	(void)writeBufSize;
 	// Open port
 	m_handle = ::open(portName, O_RDWR | O_NOCTTY);
 	// O_RDWR: Read+Write
@@ -377,11 +400,11 @@ XsensResultValue Cmt1s::open(  const char *portName,
 	/* Start configuring of port for non-canonical transfer mode */
 	// Get current options for the port
 	tcgetattr(m_handle, &m_commState);
-	
-	// Set baudrate. 
+
+	// Set baudrate.
 	cfsetispeed(&m_commState, baudRate);
 	cfsetospeed(&m_commState, baudRate);
-	
+
 	// Enable the receiver and set local mode
 	m_commState.c_cflag |= (CLOCAL | CREAD);
 	// Set character size to data bits and set no parity Mask the characte size bits
@@ -401,26 +424,25 @@ XsensResultValue Cmt1s::open(  const char *portName,
 
 	// Set the new options for the port
 	tcsetattr(m_handle,TCSANOW, &m_commState);
-	
-	m_port = 0;
+
+	m_port = 1;
 	sprintf(m_portname, "%s", portName);
 
 	tcflush(m_handle, TCIOFLUSH);
 
 	// setting RTS and DTR; RTS for Xbus Master, DTR for calibration sensors
-	// int cmbits;
-	// if (ioctl(m_handle, TIOCMGET, &cmbits) < 0)
-	// {
-        //     perror("");
-	// 	return (m_lastResult = XRV_ERROR);
-	// }
-	// 
-	// cmbits |= TIOCM_RTS|TIOCM_DTR;
-	// 
-	// if (ioctl(m_handle, TIOCMSET, &cmbits) < 0)
-	// {
-	// 	return (m_lastResult = XRV_ERROR);
-	// }
+	int cmbits;
+	if (ioctl(m_handle, TIOCMGET, &cmbits) < 0)
+	{
+		return (m_lastResult = XRV_ERROR);
+	}
+
+	cmbits |= TIOCM_RTS|TIOCM_DTR;
+
+	if (ioctl(m_handle, TIOCMSET, &cmbits) < 0)
+	{
+		return (m_lastResult = XRV_ERROR);
+	}
 #endif // !_WIN32
 
 	CMT1LOG("L1: Port opened\n");
@@ -436,13 +458,13 @@ XsensResultValue Cmt1s::open (	const uint32_t portNumber,
 						uint32_t writeBufSize)
 {
 	char comFileName[32];
-	
+
 	// Create file name
 	sprintf(comFileName, "COM%d", portNumber);
-	
-	return Cmt1s::open(comFileName, baudRate, readBufSize, writeBufSize); 
+
+	return Cmt1s::open(comFileName, baudRate, readBufSize, writeBufSize);
 }
-#endif	
+#endif
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Read data from the serial port and put it into the data buffer.
@@ -458,15 +480,19 @@ XsensResultValue Cmt1s::readData (const uint32_t maxLength, uint8_t* data,
 		return (m_lastResult = XRV_NOPORTOPEN);
 
 #ifdef _WIN32
-	BOOL rres = ::ReadFile(m_handle, data, maxLength, length, NULL);
+	DWORD llength;
+	BOOL rres = ::ReadFile(m_handle, data, maxLength, &llength, NULL);
+	*length = llength;
 	CMT1LOG("L1: readData, ReadFile returns %u (%u)\n",rres,*length);
 	if (m_onBytesReceived != NULL && *length > 0)
 	{
 		CmtBinaryData* bytes = (CmtBinaryData*) malloc(sizeof(CmtBinaryData));
+		if (!bytes)
+			return XRV_OUTOFMEMORY;
 		bytes->m_size = *length;
 		bytes->m_portNr = m_port;
 		memcpy(bytes->m_data,data,*length);
-#ifdef _LOG_CALLBACKS
+#ifdef LOG_CALLBACKS
 		CMTLOG("C1: onBytesReceived(%d,(%d,%d),%p)\n",(int32_t) m_onBytesReceivedInstance, (int32_t) bytes->m_size, (int32_t) bytes->m_portNr, m_onBytesReceivedParam);
 #endif
 		m_onBytesReceived(m_onBytesReceivedInstance,CMT_CALLBACK_ONBYTESRECEIVED,bytes,m_onBytesReceivedParam);
@@ -478,10 +504,28 @@ XsensResultValue Cmt1s::readData (const uint32_t maxLength, uint8_t* data,
 		return (m_lastResult = XRV_ERROR);
 	}
 #else
+	fd_set fd;
+	fd_set err;
+	timeval timeout;
+	FD_ZERO(&fd);
+	FD_ZERO(&err);
+	FD_SET(m_handle, &fd);
+	FD_SET(m_handle, &err);
+
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
+
+	int res = select(FD_SETSIZE, &fd, NULL, &err, &timeout);
+	if (res <= 0 || FD_ISSET(m_handle, &err))
+	{
+		*length = 0;
+		return (m_lastResult = XRV_ERROR);
+	}
+
 	*length = read(m_handle, data, maxLength);
 #endif
 
-#ifdef _LOG_RX_TX
+#ifdef LOG_RX_TX
 	if (*length > 0)
 	{
 		if (rx_log == NULL)
@@ -500,7 +544,7 @@ XsensResultValue Cmt1s::readData (const uint32_t maxLength, uint8_t* data,
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Set the callback function for when bytes have been received
-XsensResultValue Cmt1s::setCallbackFunction(CmtCallbackSelector tp, int32_t instance, CmtCallbackFunction func, void* param)
+XsensResultValue Cmt1s::setCallbackFunction(CmtCallbackType tp, int32_t instance, CmtCallbackFunction func, void* param)
 {
 	if (tp == CMT_CALLBACK_ONBYTESRECEIVED)
 	{
@@ -530,7 +574,7 @@ XsensResultValue Cmt1s::setTimeout (const uint32_t ms)
 	{
 		commTimeouts.ReadIntervalTimeout = 0;
 		commTimeouts.ReadTotalTimeoutConstant = m_timeout;	// ms time
-		commTimeouts.ReadTotalTimeoutMultiplier = 0; 
+		commTimeouts.ReadTotalTimeoutMultiplier = 0;
 		commTimeouts.WriteTotalTimeoutConstant = m_timeout;
 		commTimeouts.WriteTotalTimeoutMultiplier = 0;
 	}
@@ -539,7 +583,7 @@ XsensResultValue Cmt1s::setTimeout (const uint32_t ms)
 	// immediate return whether data is available or not
 		commTimeouts.ReadIntervalTimeout = MAXDWORD;
 		commTimeouts.ReadTotalTimeoutConstant = 0;
-		commTimeouts.ReadTotalTimeoutMultiplier = 0; 
+		commTimeouts.ReadTotalTimeoutMultiplier = 0;
 		commTimeouts.WriteTotalTimeoutConstant = 0;
 		commTimeouts.WriteTotalTimeoutMultiplier = 0;
 	}
@@ -598,9 +642,11 @@ XsensResultValue Cmt1s::writeData (const uint32_t length,  const uint8_t* data,
 		return (m_lastResult = XRV_NOPORTOPEN);
 
 #ifdef _WIN32
-	if (WriteFile(m_handle, data, length, written, NULL))
+	DWORD lwritten = 0;
+	*written = 0;
+	if (WriteFile(m_handle, data, length, &lwritten, NULL))
 	{
-#ifdef _LOG_RX_TX
+#ifdef LOG_RX_TX
 		if (written[0] > 0)
 		{
 			if (tx_log == NULL)
@@ -612,6 +658,7 @@ XsensResultValue Cmt1s::writeData (const uint32_t length,  const uint8_t* data,
 			fwrite(data,1,*written,tx_log);
 		}
 #endif
+		*written = lwritten;
 		return (m_lastResult = XRV_OK);
 	}
 	else
@@ -665,7 +712,8 @@ XsensResultValue Cmt1f::appendData (const uint32_t length,  const void* data)
 		m_reading = false;
 		FSEEK_R(0);
 	}
-	fwrite(data, 1, length, m_handle);
+	size_t bytesWritten = fwrite(data, 1, length, m_handle);
+	(void)bytesWritten;
 	m_writePos = FTELL();
 	m_fileSize = m_writePos;
 
@@ -771,14 +819,14 @@ XsensResultValue Cmt1f::create (const char* filename)
 		}
 	#else
 		// based on the assumption that this doesn't concern the serial port, handle
-		// it the same way using realpath(). Apparently realpath() doesn't require a  
+		// it the same way using realpath(). Apparently realpath() doesn't require a
 		// maximum length. One would possibly want to write a wrapper for it.
 		if (realpath(filename, m_filename) == NULL)
-        {
-            fclose(m_handle);
-            remove(filename);
-            return m_lastResult = XRV_INVALIDPARAM;
-        }
+		{
+			fclose(m_handle);
+			remove(filename);
+			return m_lastResult = XRV_INVALIDPARAM;
+		}
 	#endif
 	mbstowcs(m_filename_w,m_filename,CMT_MAX_FILENAME_LENGTH);
 	m_unicode = false;
@@ -821,7 +869,7 @@ XsensResultValue Cmt1f::create (const wchar_t* filename)
 	m_readOnly = false;
 #else
 	char tFilename[CMT_MAX_FILENAME_LENGTH*2];
-	wcstombs(tFilename,m_filename_w,CMT_MAX_FILENAME_LENGTH);
+	wcstombs(tFilename, filename, CMT_MAX_FILENAME_LENGTH);
 	XsensResultValue res = create(tFilename);
 	if (res != XRV_OK)
 		return res;
@@ -832,7 +880,7 @@ XsensResultValue Cmt1f::create (const wchar_t* filename)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Delete the given data from the file.
-XsensResultValue Cmt1f::deleteData (const CmtFilePos start, const uint32_t length)
+XsensResultValue Cmt1f::deleteData (const XsensFilePos start, const uint32_t length)
 {
 	if (!m_isOpen)
 		return m_lastResult = XRV_NOFILEOPEN;
@@ -841,14 +889,14 @@ XsensResultValue Cmt1f::deleteData (const CmtFilePos start, const uint32_t lengt
 
 	gotoWrite();
 
-	CmtFilePos wPos = start;
-	CmtFilePos rPos = wPos + length;
+	XsensFilePos wPos = start;
+	XsensFilePos rPos = wPos + length;
 
 	size_t read1;
-	CmtFilePos endPos = (start + (CmtFilePos) length);
+	XsensFilePos endPos = (start + (XsensFilePos) length);
 	if (endPos < m_fileSize)
 	{
-		CmtFilePos remaining = m_fileSize - endPos;
+		XsensFilePos remaining = m_fileSize - endPos;
 		char buffer[512];
 
 		// copy data
@@ -904,11 +952,11 @@ XsensResultValue Cmt1f::deleteData (const CmtFilePos start, const uint32_t lengt
 	}
 
 	return m_lastResult = XRV_OK;
-}	
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Find a string of bytes in the file
-XsensResultValue Cmt1f::find (const void* needleV, const uint32_t needleLength, CmtFilePos& pos)
+XsensResultValue Cmt1f::find (const void* needleV, const uint32_t needleLength, XsensFilePos& pos)
 {
 	if (!m_isOpen)
 		return m_lastResult = XRV_NOFILEOPEN;
@@ -926,12 +974,12 @@ XsensResultValue Cmt1f::find (const void* needleV, const uint32_t needleLength, 
 		readBytes = fread(buffer,1,(512-((size_t) m_readPos & 0x1FF)),m_handle);
 	else
 		readBytes = fread(buffer,1,512,m_handle);		// read a block of data
-	
+
 	while (readBytes > 0)
 	{
 		m_readPos += readBytes;
 		bufferPos = 0;
-		
+
 		while (bufferPos < readBytes && needlePos < needleLength)
 		{
 			if (buffer[bufferPos] == needle[needlePos])
@@ -1001,6 +1049,7 @@ void Cmt1f::gotoRead(void)
 	if (m_reading)
 		return;
 
+	fflush(m_handle);
 	FSEEK(m_readPos);
 	m_reading = true;
 }
@@ -1012,13 +1061,14 @@ void Cmt1f::gotoWrite(void)
 	if (!m_reading)
 		return;
 
+	fflush(m_handle);
 	FSEEK(m_writePos);
 	m_reading = false;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Insert the given data into the file.
-XsensResultValue Cmt1f::insertData (const CmtFilePos start, const uint32_t length, const void* data)
+XsensResultValue Cmt1f::insertData (const XsensFilePos start, const uint32_t length, const void* data)
 {
 	if (!m_isOpen)
 		return m_lastResult = XRV_NOFILEOPEN;
@@ -1027,20 +1077,24 @@ XsensResultValue Cmt1f::insertData (const CmtFilePos start, const uint32_t lengt
 
 	gotoWrite();
 
-	CmtFilePos rPos = start;
-	CmtFilePos wPos = rPos + length;
+	XsensFilePos rPos = start;
+	XsensFilePos wPos = rPos + length;
 
 	size_t read1, read2;
-	CmtFilePos remaining = m_fileSize - start;
+	XsensFilePos remaining = m_fileSize - start;
 	size_t bsize = (length > 512)?length:512;
 	char* buffer1 = (char*) malloc(bsize);
+	if (!buffer1)
+		return XRV_OUTOFMEMORY;
 	char* buffer2 = (char*) malloc(bsize);
+	if (!buffer2)
+		return XRV_OUTOFMEMORY;
 	char* btemp;
 
 	// copy data
 	FSEEK(rPos);
 
-	if (remaining >= (CmtFilePos) bsize)
+	if (remaining >= (XsensFilePos) bsize)
 		read1 = fread(buffer1,1,bsize,m_handle);
 	else
 		read1 = fread(buffer1,1,(size_t) remaining,m_handle);
@@ -1055,7 +1109,7 @@ XsensResultValue Cmt1f::insertData (const CmtFilePos start, const uint32_t lengt
 		btemp = buffer1; buffer1 = buffer2; buffer2 = btemp;
 
 		// read next block
-		if (remaining >= (CmtFilePos) bsize)
+		if (remaining >= (XsensFilePos) bsize)
 			read1 = fread(buffer1,1,bsize,m_handle);
 		else
 			read1 = fread(buffer1,1,(size_t) remaining,m_handle);
@@ -1114,11 +1168,11 @@ XsensResultValue Cmt1f::open(const char* filename, const bool create, const bool
 			return m_lastResult = XRV_INVALIDPARAM;
 		}
 	#else
-	    // use the same trick again.
+		// use the same trick again.
 		if (realpath(filename, m_filename) == NULL)
 		{
-		    fclose(m_handle);
-		    return m_lastResult = XRV_INVALIDPARAM;
+			fclose(m_handle);
+			return m_lastResult = XRV_INVALIDPARAM;
 		}
 	#endif
 	mbstowcs(m_filename_w,m_filename,CMT_MAX_FILENAME_LENGTH);
@@ -1243,7 +1297,7 @@ XsensResultValue Cmt1f::readData (const uint32_t maxLength, const char terminato
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Set the new absolute read position
-XsensResultValue Cmt1f::setReadPos (const CmtFilePos pos)
+XsensResultValue Cmt1f::setReadPos (const XsensFilePos pos)
 {
 	if (!m_isOpen)
 		return m_lastResult = XRV_NOFILEOPEN;
@@ -1260,7 +1314,7 @@ XsensResultValue Cmt1f::setReadPos (const CmtFilePos pos)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Set the new absolute write position
-XsensResultValue Cmt1f::setWritePos(const CmtFilePos pos)
+XsensResultValue Cmt1f::setWritePos(const XsensFilePos pos)
 {
 	if (!m_isOpen)
 		return m_lastResult = XRV_NOFILEOPEN;
@@ -1297,7 +1351,19 @@ XsensResultValue Cmt1f::writeData (const uint32_t length,  const void* data)
 		return m_lastResult = XRV_READONLY;
 
 	gotoWrite();
-	m_writePos += fwrite(data, 1, length, m_handle);
+	size_t writeRes = fwrite(data, 1, length, m_handle);
+	if (writeRes == (size_t)EOF || writeRes < length)
+	{
+		int32_t err = (int32_t)errno;
+		switch (err)
+		{
+		case 0:			break;
+		case ENOSPC:	return m_lastResult = XRV_INSUFFICIENTSPACE;
+		case ENOMEM:	return m_lastResult = XRV_OUTOFMEMORY;
+		default:		return m_lastResult = XRV_ERROR;
+		}
+	}
+	m_writePos += writeRes;
 
 	if (m_writePos > m_fileSize)
 		m_fileSize = m_writePos;

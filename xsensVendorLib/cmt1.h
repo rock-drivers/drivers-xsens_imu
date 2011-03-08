@@ -1,3 +1,4 @@
+#ifndef XSENS_MONOLITHIC
 /*! \file
 	\brief	Contains the CMT Level 1 interface
 
@@ -16,20 +17,22 @@
 	IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
 	PARTICULAR PURPOSE.
 */
-#ifndef _CMT1_H_2006_04_12
-#define _CMT1_H_2006_04_12
+#endif
+#ifndef CMT1_H
+#define CMT1_H
 
-#ifndef _CMTDEF_H_2006_05_01
+#ifndef CMTDEF_H
 #	include "cmtdef.h"
 #endif
 
+#include <stdlib.h>
+#include <stdio.h>
 #ifdef _WIN32
 #	include <windows.h>
 //#	include <sys/types.h>
 #else
 #	include <termios.h>
 // these are not required by level 1, but to keep the higher levels platform-independent they are put here
-#	include <stdlib.h>
 #	include <string.h>
 #	include <stddef.h>
 #define _strnicmp	strncasecmp
@@ -41,9 +44,9 @@
 namespace xsens {
 
 #ifndef CMTLOG
-#	if defined(_DEBUG) || defined(_LOG_ALWAYS)
+#	if defined(XSENS_DEBUG) || defined(CMT_LOG_ALWAYS)
 		void CMTLOG(const char *str, ...);
-#		define CMTEXITLOG(str)	JanitorFunc2<const char*,XsensResultValue> _cmtExitLog(CMTLOG,str " returns %u",m_lastResult);
+#		define CMTEXITLOG(str)	JanitorFunc2R<const char*,XsensResultValue> _cmtExitLog(CMTLOG,str " returns %u",m_lastResult);
 #	else
 #		define CMTLOG(...)
 #		define CMTEXITLOG(...)
@@ -52,6 +55,7 @@ namespace xsens {
 
 #ifndef _WIN32
 int _wcsnicmp(const wchar_t* s1, const wchar_t* s2,int count);
+typedef int32_t HANDLE;
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -65,7 +69,7 @@ private:
 	//! This object cannot be copied, so this function is not implemented.
 	Cmt1s(const Cmt1s& ref);
 
-	#ifdef _LOG_RX_TX
+	#ifdef LOG_RX_TX
 		FILE* rx_log;
 		FILE* tx_log;
 	#endif
@@ -103,7 +107,6 @@ protected:
 	#else
 		termios	m_commState;		//!< Stored settings about the serial port
 		int32_t		m_handle;			//!< The serial port handle
-		typedef int32_t HANDLE;
 	#endif
 public:
 		//! Default constructor, initializes all members to their default values.
@@ -128,19 +131,19 @@ public:
 	*/
 	XsensResultValue flushData (void);
 		//! Return the baudrate that is currently being used by the port
-	uint32_t getBaudrate(void) const { return m_baudrate; }
+	uint32_t getBaudrate(void) const;
 		//! Return the handle of the port
-	HANDLE getHandle(void) const { return m_handle; }
+	HANDLE getHandle(void) const;
 		//! Retrieve the port number that was last successfully opened.
-	uint16_t getPortNr (void) const { return m_port; }
+	uint16_t getPortNr (void) const;
 		//! Retrieve the port name that was last successfully opened.
-	void getPortName(char *portname) const { sprintf(portname, "%s", m_portname); }
+	void getPortName(char *portname) const;
 		//! Return the error code of the last operation.
-	XsensResultValue getLastResult(void) const { return m_lastResult; }
+	XsensResultValue getLastResult(void) const;
 		//! Return the current timeout value
-	uint32_t getTimeout (void) const { return m_timeout; }
+	uint32_t getTimeout (void) const;
 		//! Return whether the communication port is open or not.
-	bool isOpen (void) const { return m_isOpen; }
+	bool isOpen (void) const;
 	
 	/*! \brief Open a communcation channel to the given serial port name.
 	
@@ -177,7 +180,7 @@ public:
 	XsensResultValue readData (const uint32_t maxLength, uint8_t* data,
 								uint32_t* length = NULL);
 	//! Set the callback function for when bytes have been received
-	XsensResultValue setCallbackFunction(CmtCallbackSelector tp, int32_t instance, CmtCallbackFunction func, void* param);
+	XsensResultValue setCallbackFunction(CmtCallbackType tp, int32_t instance, CmtCallbackFunction func, void* param);
 	/*! \brief Set the default timeout value to use in blocking operations.
 
 		This function sets the value of m_timeout. There is no infinity value. The value 0 
@@ -220,11 +223,11 @@ protected:
 		//! The file handle
 	FILE* m_handle;
 		//! Contains the size of the file
-	CmtFilePos m_fileSize;
+	XsensFilePos m_fileSize;
 		//! The last read position in the file
-	CmtFilePos m_readPos;
+	XsensFilePos m_readPos;
 		//! The last write position in the file
-	CmtFilePos m_writePos;
+	XsensFilePos m_writePos;
 		//! The last result of an operation
 	mutable XsensResultValue m_lastResult;
 		//! Contains the name of the file that was last successfully opened.
@@ -273,7 +276,7 @@ public:
 
 		The write position is not changed and the read position	is checked for validity.
 	*/
-	XsensResultValue deleteData(const CmtFilePos start, const uint32_t length);
+	XsensResultValue deleteData(const XsensFilePos start, const uint32_t length);
 	/*! \brief Find a string of bytes in the file
 
 		The function searches from the current read position until the given \c needle is 
@@ -284,14 +287,14 @@ public:
 		\param pos			Out: The position where the needle was found. This will point
 							to the first character of the found needle.
 	*/
-	XsensResultValue find(const void* needle, const uint32_t needleLength, CmtFilePos& pos);
+	XsensResultValue find(const void* needle, const uint32_t needleLength, XsensFilePos& pos);
 	/*! \brief Flush all data to be written.
 		This function writes any remaining data immediately and does not return
 		until this is done.
 	*/
 	XsensResultValue flushData(void);
 		//! Return the size of the file.
-	CmtFilePos getFileSize(void) const { return m_fileSize; }
+	XsensFilePos getFileSize(void) const { return m_fileSize; }
 		//! Return the result code of the last operation.
 	XsensResultValue getLastResult(void) const	{ return m_lastResult; }
 	/*! \brief Retrieve the filename that was last successfully opened.
@@ -307,9 +310,9 @@ public:
 	*/
 	XsensResultValue getName(wchar_t* filename) const;
 		//! Return the current read position.
-	CmtFilePos getReadPos(void) const { return m_readPos; }
+	XsensFilePos getReadPos(void) const { return m_readPos; }
 		//! Return the current write position.
-	CmtFilePos getWritePos(void) const { return m_writePos; }
+	XsensFilePos getWritePos(void) const { return m_writePos; }
 	/*! \brief Insert the given data into the file.
 	
 		The function writes the given data to the file at the current write position. This
@@ -317,7 +320,7 @@ public:
 		
 		The write position is placed at the end of the inserted data.
 	*/
-	XsensResultValue insertData(const CmtFilePos start, const uint32_t length,
+	XsensResultValue insertData(const XsensFilePos start, const uint32_t length,
 								const void* data);
 		//! Return whether the file is open or not.
 	bool isOpen(void) const { return m_isOpen; }
@@ -352,12 +355,12 @@ public:
 
 		The read position is checked against the filesize before committing.
 	*/
-	XsensResultValue setReadPos(const CmtFilePos pos);
+	XsensResultValue setReadPos(const XsensFilePos pos);
 	/*! \brief Set the new absolute write position
 
 		The write position is checked against the filesize before committing.
 	*/
-	XsensResultValue setWritePos(const CmtFilePos pos = -1);
+	XsensResultValue setWritePos(const XsensFilePos pos = -1);
 
 	/*! \brief Write data to the file.
 
@@ -368,4 +371,4 @@ public:
 
 }	// end of xsens namespace
 
-#endif	// _CMT1_H_2006_04_12
+#endif	// CMT1_H
