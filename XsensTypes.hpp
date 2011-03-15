@@ -6,7 +6,8 @@ namespace xsens_imu {
     enum errorCodes {
         NO_ERROR = 0,
         ERROR_TIMEOUT = 1,
-        ERROR_OTHER = 2
+        ERROR_OTHER = 2,
+        ERROR_AGAIN = 3
     };
 
     enum imuMode {

@@ -39,6 +39,17 @@ namespace xsens_imu {
             enum xsens_imu::errorCodes getReading();
 
             /**
+             * This function acquires a new sensor reading 
+             * from the Xsens IMU.
+             *
+             * Return Values
+             *  0 Data Aquired
+             * -1 Error_Again e.g. no reading there yet
+             * -2 Error fetching data from IMU
+             **/
+            enum xsens_imu::errorCodes getReadingNonBlocking();
+
+            /**
              * Sets the timout for reading measurements
              * from the IMU. 
              * Parameter is in ms

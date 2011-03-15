@@ -283,6 +283,34 @@ enum xsens_imu::errorCodes XsensDriver::getReading() {
   return ERROR_OTHER;
 }
 
+enum xsens_imu::errorCodes XsensDriver::getReadingNonBlocking() {
+
+  XsensResultValue ret = _data->cmt3.readDataPacket(_data->packet, true);
+  
+  switch(ret) {
+    case XRV_TIMEOUT:
+    case XRV_TIMEOUTNODATA:
+      //timeout, no data available
+      return ERROR_AGAIN;
+      break;
+
+    default:
+      //error occured
+      return ERROR_OTHER;
+      break;
+      
+    case XRV_OK:
+      _data->caldata  = _data->packet->getCalData(0);
+      _data->rawdata  = _data->packet->getRawData(0);
+      _data->qat_data = _data->packet->getOriQuat(0);
+
+      return NO_ERROR;
+      break;
+  }
+  
+  return ERROR_OTHER;
+}
+
 int XsensDriver::getPacketCounter() {
   uint16_t ctr = _data->packet->getSampleCounter();
   if (ctr < last_samplectr) {
