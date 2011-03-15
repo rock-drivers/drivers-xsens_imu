@@ -195,7 +195,8 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
 }
 
 bool XsensDriver::setTimeout(const uint32_t timeout) {
-  return !_data->cmt3.setTimeoutMeasurement(timeout);
+    m_timeout = timeout;
+    return !_data->cmt3.setTimeoutMeasurement(timeout);
 }
 
 std::list<std::string> XsensDriver::getAvailableScenarios() {
@@ -256,31 +257,29 @@ bool XsensDriver::setScenario(std::string const& name) {
 }
 
 enum xsens_imu::errorCodes XsensDriver::getReading() {
+    
+    timeval timeout_spec = { m_timeout / 1000, (m_timeout % 1000) * 1000 };
+    int fd = getFileHandle();
+    
+    while(1)
+    {
+        enum xsens_imu::errorCodes status = getReadingNonBlocking();
 
-  XsensResultValue ret = _data->cmt3.waitForDataMessage(_data->packet);
-  
-  switch(ret) {
-    case XRV_TIMEOUT:
-    case XRV_TIMEOUTNODATA:
-      //timeout, no data available
-      return ERROR_TIMEOUT;
-      break;
+        if(status != ERROR_AGAIN)
+            return status;
 
-    default:
-      //error occured
-      return ERROR_OTHER;
-      break;
-      
-    case XRV_OK:
-      _data->caldata  = _data->packet->getCalData(0);
-      _data->rawdata  = _data->packet->getRawData(0);
-      _data->qat_data = _data->packet->getOriQuat(0);
+        fd_set set;
+        FD_ZERO(&set);
+        FD_SET(fd, &set);
 
-      return NO_ERROR;
-      break;
-  }
-  
-  return ERROR_OTHER;
+        int ret = select(fd + 1, &set, NULL, NULL, &timeout_spec);
+        if (ret < 0)
+            return ERROR_OTHER;
+        else if (ret == 0)
+            return ERROR_TIMEOUT;        
+    }
+
+    return ERROR_OTHER;
 }
 
 enum xsens_imu::errorCodes XsensDriver::getReadingNonBlocking() {

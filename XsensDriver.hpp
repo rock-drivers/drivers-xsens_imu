@@ -120,6 +120,7 @@ namespace xsens_imu {
             XsensData* _data;
 	    std::map< std::string, int > m_scenarios;
 	    uint16_t last_samplectr;
+            int m_timeout;
 	    int samplectr_offset;
    };
 }
