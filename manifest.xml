@@ -17,7 +17,7 @@
       means people that bought an Xsens IMU hardware.
   </license>
 
-  <rosdep name="eigen2" />
+  <rosdep name="eigen3" />
   <tags>stable</tags>
 </package>
 

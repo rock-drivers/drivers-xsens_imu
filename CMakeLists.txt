@@ -1,4 +1,3 @@
-
 PROJECT(xsens)
 
 cmake_minimum_required(VERSION 2.6)
@@ -10,8 +9,8 @@ ADD_DEFINITIONS(-Wall)
 #ADD_EXECUTABLE(driver main.cpp interface.cpp)
 find_package(PkgConfig)
 
-INCLUDE_DIRECTORIES(/usr/include/eigen2)
-
+pkg_check_modules(EIGEN3 REQUIRED "eigen3")
+include_directories(${EIGEN3_INCLUDE_DIRS})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/xsensVendorLib)
 add_subdirectory(xsensVendorLib)
