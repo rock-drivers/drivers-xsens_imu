@@ -172,14 +172,6 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
         return false;
     }
 
-    CmtSyncOutSettings syncOutSettings(CMT_SYNCOUT_TYPE_PULSE
-				       | CMT_SYNCOUT_POL_POS);
-    ret = _data->cmt3.setSyncOutSettings(syncOutSettings);
-    if(ret != XRV_OK) {
-        std::cerr << "xsens: failed to set sync out settings " << xsensResultText(ret) << std::endl;
-        return false;
-    }
-
    // Go into measurement mode
     ret = _data->cmt3.gotoMeasurement();
     if (ret != XRV_OK)
@@ -254,6 +246,28 @@ bool XsensDriver::setScenario(std::string const& name) {
     return false;
   }
   return true;
+}
+
+bool XsensDriver::setSyncOut(bool enable, bool pulse, bool positive) {
+    CmtSyncOutSettings syncOutSettings;
+    if (enable) {
+	if (pulse) {
+	    if (positive)
+		syncOutSettings = CMT_SYNCOUT_TYPE_PULSE
+		    | CMT_SYNCOUT_POL_POS;
+	    else
+		syncOutSettings = CMT_SYNCOUT_TYPE_PULSE
+		    | CMT_SYNCOUT_POL_NEG;
+	} else
+	    syncOutSettings = CMT_SYNCOUT_TYPE_TOGGLE;
+    } else
+	syncOutSettings = CMT_SYNCOUT_DISABLED;
+    XsensResultValue ret = _data->cmt3.setSyncOutSettings(syncOutSettings);
+    if(ret != XRV_OK) {
+        std::cerr << "xsens: failed to set sync out settings " << xsensResultText(ret) << std::endl;
+        return false;
+    }
+    return true;
 }
 
 enum xsens_imu::errorCodes XsensDriver::getReading() {

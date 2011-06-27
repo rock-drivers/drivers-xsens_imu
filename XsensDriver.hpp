@@ -116,6 +116,15 @@ namespace xsens_imu {
 	    std::list<std::string> getAvailableScenarios();
 	    bool setScenario(std::string const& name);
 
+	    /**
+	     * Configures the SyncOut pin. Must be done before setReadingMode().
+	     * enable: selects enabled or disabled
+	     * pulse: when true, a pulse is emitted on sensor acquisition,
+	     * otherwise the level of the line is toggled.
+	     * positive: direction of the pulse
+	     */
+	    bool setSyncOut(bool enable, bool pulse, bool positive);
+
         private:
             XsensData* _data;
 	    std::map< std::string, int > m_scenarios;
