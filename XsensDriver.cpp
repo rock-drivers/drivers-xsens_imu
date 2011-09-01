@@ -14,6 +14,8 @@ XsensDriver::XsensDriver()
 {
     _data = new XsensData();
     _data->packet = NULL;
+
+    _sample_freq = DEFAULT_SAMPLE_FREQUENCY; // initialise with default frequency
 }
 
 XsensDriver::~XsensDriver() {
@@ -70,7 +72,7 @@ bool XsensDriver::setCalibrationMode()
 {
     int cmt_output  = CMT_OUTPUTMODE_RAW;
     int cmt_options = CMT_OUTPUTSETTINGS_TIMESTAMP_SAMPLECNT;
-    int sample_freq = XsensDriver::SAMPLE_FREQUENCY;
+    int sample_freq = XsensDriver::_sample_freq;
 
     // Set sensor to config state
     XsensResultValue ret = _data->cmt3.gotoConfig();
@@ -133,6 +135,14 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
             //tell IMU to give us orientation as quaternion
             settings = CMT_OUTPUTSETTINGS_ORIENTMODE_QUATERNION;
             break;
+
+        case ORI_EULER_DATA:
+            //configure IMU in orientation mode
+            mode = CMT_OUTPUTMODE_ORIENT;
+            //tell IMU to give us orientation as Euler angels
+            settings = CMT_OUTPUTSETTINGS_ORIENTMODE_EULER;
+            break;
+
         case CAL_AND_ORI_DATA:
             //configure IMU in calibrated data and orientation mode
             mode = CMT_OUTPUTMODE_CALIB | CMT_OUTPUTMODE_ORIENT;
@@ -162,11 +172,11 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
         return false;
     }
 
-    unsigned short sampleFreq = _data->cmt3.getSampleFrequency();
-
-    CmtDeviceMode deviceMode(mode, settings, sampleFreq);
+    // use configurable "_sample_freq" instead of static frequency
+    CmtDeviceMode deviceMode(mode, settings, _sample_freq);
     deviceMode.m_outputMode &= 0xFF0F;
-    ret = _data->cmt3.setDeviceMode(deviceMode, true);
+    ret = _data->cmt3.setDeviceMode(deviceMode, true, CMT_DID_BROADCAST); //
+
     if(ret != XRV_OK) {
         std::cerr << "xsens: failed to set device mode " << xsensResultText(ret) << std::endl;
         return false;
@@ -189,6 +199,14 @@ bool XsensDriver::setReadingMode(imuMode output_mode)
 bool XsensDriver::setTimeout(const uint32_t timeout) {
     m_timeout = timeout;
     return !_data->cmt3.setTimeoutMeasurement(timeout);
+}
+
+void XsensDriver::setFrequency(const uint16_t new_sample_frequency) {
+	_sample_freq = new_sample_frequency;
+}
+
+uint16_t XsensDriver::getFrequency(void) {
+	return _data->cmt3.getSampleFrequency();
 }
 
 std::list<std::string> XsensDriver::getAvailableScenarios() {
@@ -316,6 +334,7 @@ enum xsens_imu::errorCodes XsensDriver::getReadingNonBlocking() {
       _data->caldata  = _data->packet->getCalData(0);
       _data->rawdata  = _data->packet->getRawData(0);
       _data->qat_data = _data->packet->getOriQuat(0);
+      _data->eulerdata = _data->packet->getOriEuler(0);
 
       return NO_ERROR;
       break;
@@ -336,6 +355,10 @@ int XsensDriver::getPacketCounter() {
 Eigen::Quaternion<double> XsensDriver::getOrientation() const {
   // Eigen Quaternion format: w, x, y, z
   return Eigen::Quaternion<double>(_data->qat_data.m_data[0], _data->qat_data.m_data[1], _data->qat_data.m_data[2], _data->qat_data.m_data[3]);
+}
+
+Eigen::Vector3d XsensDriver::getEulerAngles() const {
+  return Eigen::Vector3d(_data->eulerdata.m_roll, _data->eulerdata.m_pitch, _data->eulerdata.m_yaw);
 }
 
 Eigen::Vector3d XsensDriver::getCalibratedAccData() const {

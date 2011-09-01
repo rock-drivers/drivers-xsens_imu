@@ -15,6 +15,7 @@ namespace xsens_imu {
             CmtCalData caldata;
             CmtRawData rawdata;
             CmtQuat qat_data;
+            CmtEuler eulerdata;
     };
 }
 

@@ -15,7 +15,7 @@ namespace xsens_imu {
 
     class XsensDriver {
         public:
-            static const int SAMPLE_FREQUENCY = 100;
+            static const int DEFAULT_SAMPLE_FREQUENCY = 100;
 
             XsensDriver();
             ~XsensDriver();
@@ -58,6 +58,21 @@ namespace xsens_imu {
             bool setTimeout(const uint32_t timeout);
 
             /**
+             * Sets the sampling frequency for reading measurements
+             * from the IMU.
+             * Parameter is in Hz
+             * Note: Method has to be called BEFORE setReadingMode() to apply new frequency value.
+             **/
+            void setFrequency(const uint16_t new_sample_frequency);
+
+            /**
+             * Gets the sampling frequency of IMU.
+             * Returns frequency in Hz.
+             * Note: Method has to be called BEFORE setReadingMode() to apply new frequency value.
+             **/
+            uint16_t getFrequency(void);
+
+            /**
              * Returns the packt count of the last received
              * packet from the IMU
              **/
@@ -69,6 +84,12 @@ namespace xsens_imu {
              * Note getReading() should be called before calling this function
              **/
             Eigen::Quaternion<double> getOrientation() const;
+
+            /**
+             * Returns the current orientation as Euler Angels (Roll, Pitch, Yaw).
+             * Note getReading() should be called before calling this function
+             **/
+            Eigen::Vector3d getEulerAngles() const;
 
             /**
              * Returns the calibrated accelerometer data
@@ -127,10 +148,11 @@ namespace xsens_imu {
 
         private:
             XsensData* _data;
-	    std::map< std::string, int > m_scenarios;
-	    uint16_t last_samplectr;
+            std::map< std::string, int > m_scenarios;
+            uint16_t last_samplectr;
             int m_timeout;
-	    int samplectr_offset;
+            int samplectr_offset;
+            unsigned short _sample_freq;
    };
 }
 
