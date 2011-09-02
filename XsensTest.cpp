@@ -22,8 +22,8 @@ int main(int argc, char* argv[]) {
     if (! driver.open(dev))
         return 1;
 
-    // set frequency of 50Hz
-    driver.setFrequency(50);
+    // example: uncomment the following line to set frequency of 50Hz
+    //driver.setFrequency(50);
 
     if (! driver.setReadingMode(xsens_imu::CAL_AND_ORI_DATA))
         return 1;

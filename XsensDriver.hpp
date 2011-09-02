@@ -86,7 +86,12 @@ namespace xsens_imu {
             Eigen::Quaternion<double> getOrientation() const;
 
             /**
-             * Returns the current orientation as Euler Angels (Roll, Pitch, Yaw).
+             * Returns the current orientation as Euler Angels (aerospace convention: Roll, Pitch, Yaw).
+             * Returned angles given as Tait–Bryan convention with x-Axis as heading direction:
+             *   Rotation around x-Axis in YZ-Plane: Roll (Angle Phi)
+             *   Rotation around y-Axis in XZ-Plane: Pitch (Angle Theta)
+             *   Rotation around z-Axis in XY Plane: Yaw (Angle Psi)
+             *
              * Note getReading() should be called before calling this function
              **/
             Eigen::Vector3d getEulerAngles() const;
