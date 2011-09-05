@@ -3,7 +3,7 @@ exec_prefix=@CMAKE_INSTALL_PREFIX@
 libdir=${prefix}/lib
 includedir=${prefix}/include
 
-Name: hbridge
+Name: xsens
 Description: Driver for the Xsens MTi IMU
 Version: @PROJECT_VERSION@
 Libs: -L${libdir} -lxsens
