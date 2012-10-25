@@ -18,6 +18,7 @@
   </license>
 
   <rosdep name="eigen3" />
+  <depend name="boost" />
   <tags>stable</tags>
 </package>
 
