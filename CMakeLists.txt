@@ -12,6 +12,9 @@ find_package(PkgConfig)
 pkg_check_modules(EIGEN3 REQUIRED "eigen3")
 include_directories(${EIGEN3_INCLUDE_DIRS})
 
+pkg_check_modules(BASE REQUIRED "base-types")
+include_directories(${BASE_INCLUDE_DIRS})
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/xsensVendorLib)
 add_subdirectory(xsensVendorLib)
 
