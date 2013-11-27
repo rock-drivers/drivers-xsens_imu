@@ -19,6 +19,7 @@
 
   <rosdep name="eigen3" />
   <depend package="boost" />
+  <depend package="base/types" />
   <tags>stable</tags>
 </package>
 
