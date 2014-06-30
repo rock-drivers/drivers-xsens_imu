@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=@CMAKE_INSTALL_PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: xsens_imu
+Description: Driver for the Xsens MTi IMU
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lxsens_imu
+Cflags: -I${includedir}
+
