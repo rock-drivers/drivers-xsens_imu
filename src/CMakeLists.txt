@@ -1,3 +1,5 @@
+find_package(Threads)
+
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/external/xsensVendorLib)
 
 rock_library(xsens_imu
@@ -5,7 +7,7 @@ rock_library(xsens_imu
     HEADERS XsensData.hpp XsensTypes.hpp XsensDriver.hpp
     DEPS_PKGCONFIG base-types eigen3 )
 
-target_link_libraries(xsens_imu xsensVendorLib) 
+target_link_libraries(xsens_imu xsensVendorLib ${CMAKE_THREAD_LIBS_INIT}) 
 
 rock_executable(test_xsen_imu XsensTest.cpp
     DEPS xsens_imu
